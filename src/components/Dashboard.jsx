@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function Dashboard({
+  tenant,
   profile,
   onSaveProfile,
   transactions,
@@ -252,6 +253,7 @@ export default function Dashboard({
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
           <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-0.5">{tenant?.brand_name || 'Simple Bookkeeping System'}</p>
             <h2 className="text-xl font-bold text-slate-900">Financial Dashboard & Tax Report</h2>
             <p className="text-sm text-slate-500">
               Filter by year, month, or custom date range and export or print your Schedule C summary.

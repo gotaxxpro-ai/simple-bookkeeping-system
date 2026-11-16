@@ -1,8 +1,16 @@
-# Simple Bookkeeping System v2.2 — Web App
+# Simple Bookkeeping System v3.0 — Multi-Tenant White-Label Edition
 
-Added in v2.2:
-- **CSV / Spreadsheet Import (`src/components/CsvImportModal.jsx`):** Upload CSVs exported from Google Sheets or bank statements, map columns automatically, review/edit categories in a preview table, and bulk-insert into Supabase.
-- **Inline Row Edit & Bulk Edit (`src/components/TransactionLedger.jsx`):** Edit any single transaction inline, or check multiple rows to bulk-change Category, bulk-update Date, or bulk-delete.
+Single-codebase, multi-tenant bookkeeping SaaS ready to license and white-label to multiple tax offices using **one GitHub repo, one Hostinger deployment, and one Supabase database**.
 
-## Database Note
-No new SQL changes are required if you already ran `supabase/schema.sql` from v2.1—your existing `transactions` table and Row-Level Security policies already allow bulk inserts, updates, and deletes per user.
+## Setup & Upgrade Guide
+
+1. **Run `supabase/schema.sql` in Supabase SQL Editor:**
+   - Creates `organizations` (white-label tax offices) and `user_memberships` (linking clients and `office_admin` preparers to their tax office) plus multi-tenant Row-Level Security policies.
+2. **Add Your Super Admin Email in Hostinger Environment Variables:**
+   - Alongside `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, add:
+     `VITE_SUPER_ADMIN_EMAIL=gotaxxpro@gmail.com`
+   - When you log in with that email, you automatically receive `super_admin` access inside the **Tax Office Admin** tab, where you can create new white-label tax offices and generate their branded URLs (`https://yourdomain.com/?office=their-slug`).
+3. **Onboarding a Paying Tax Office:**
+   - In the **Tax Office Admin** tab, create a new Tax Office with a unique URL slug (e.g., `apex-tax`).
+   - Have the tax office owner sign up at `https://yourdomain.com/?office=apex-tax`, then switch their role in the roster from `Client` to `Office Admin`.
+   - They can immediately customize their own logo URL, brand color, support email, and booking link, and view/export all of their clients' Schedule C reports.
