@@ -37,6 +37,14 @@ export const EXPENSE_CATEGORIES = [
   'Wages',
 ];
 
+export const DRAW_METHODS = [
+  'Bank Transfer / ACH',
+  'Check',
+  'Zelle / Venmo / Cash App',
+  'Cash',
+  'Debit / ATM Withdrawal',
+];
+
 export const MONTHS = [
   { value: 1, label: 'Jan', full: 'January' },
   { value: 2, label: 'Feb', full: 'February' },

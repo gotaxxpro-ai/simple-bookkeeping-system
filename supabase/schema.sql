@@ -1,4 +1,5 @@
 -- Run this entire script in your Supabase SQL Editor
+-- Safe to run on both fresh and existing databases (uses IF NOT EXISTS)
 
 create extension if not exists "uuid-ossp";
 
@@ -25,7 +26,20 @@ create table if not exists public.transactions (
   created_at timestamptz default now()
 );
 
--- 3. Vehicle Information (multiple vehicles per user per year)
+-- 3. Owner's Draw (Non-deductible equity withdrawals)
+create table if not exists public.owners_draws (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  draw_date date not null,
+  payment_method text default 'Bank Transfer / ACH',
+  description text default '',
+  amount numeric(12,2) not null default 0,
+  draw_year int generated always as (extract(year from draw_date)::int) stored,
+  draw_month int generated always as (extract(month from draw_date)::int) stored,
+  created_at timestamptz default now()
+);
+
+-- 4. Vehicle Information (multiple vehicles per user per year)
 create table if not exists public.vehicles (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -44,7 +58,7 @@ create table if not exists public.vehicles (
   created_at timestamptz default now()
 );
 
--- 4. Cost of Goods Sold (per user per year)
+-- 5. Cost of Goods Sold (per user per year)
 create table if not exists public.cogs_records (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -60,7 +74,7 @@ create table if not exists public.cogs_records (
   unique (user_id, tax_year)
 );
 
--- 5. Home Office Deduction (per user per year)
+-- 6. Home Office Deduction (per user per year)
 create table if not exists public.home_office_records (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -77,21 +91,31 @@ create table if not exists public.home_office_records (
 -- Enable Row Level Security (RLS) so each user ONLY sees their own data
 alter table public.business_profiles enable row level security;
 alter table public.transactions enable row level security;
+alter table public.owners_draws enable row level security;
 alter table public.vehicles enable row level security;
 alter table public.cogs_records enable row level security;
 alter table public.home_office_records enable row level security;
 
+drop policy if exists "Users manage own profile" on public.business_profiles;
 create policy "Users manage own profile" on public.business_profiles
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage own transactions" on public.transactions;
 create policy "Users manage own transactions" on public.transactions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage own draws" on public.owners_draws;
+create policy "Users manage own draws" on public.owners_draws
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Users manage own vehicles" on public.vehicles;
 create policy "Users manage own vehicles" on public.vehicles
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage own cogs" on public.cogs_records;
 create policy "Users manage own cogs" on public.cogs_records
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage own home office" on public.home_office_records;
 create policy "Users manage own home office" on public.home_office_records
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

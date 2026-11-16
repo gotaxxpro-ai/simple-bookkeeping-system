@@ -8,7 +8,7 @@ import {
 import { Plus, Trash2, Search } from 'lucide-react';
 
 export default function TransactionLedger({
-  type, // 'income' | 'expense'
+  type,
   transactions,
   selectedYear,
   onAddTransaction,

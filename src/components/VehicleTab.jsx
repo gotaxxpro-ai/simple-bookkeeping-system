@@ -156,27 +156,37 @@ export default function VehicleTab({ selectedYear, vehicles, onAddVehicle, onDel
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm">
             <label className="flex items-center justify-between gap-2">
-              <span className="text-slate-700">Available for personal use during off-duty hours?</span>
+              <span className="text-slate-700">
+                Available for personal use during off-duty hours?
+              </span>
               <input
                 type="checkbox"
                 checked={form.available_personal_off_duty}
-                onChange={(e) => setForm({ ...form, available_personal_off_duty: e.target.checked })}
+                onChange={(e) =>
+                  setForm({ ...form, available_personal_off_duty: e.target.checked })
+                }
                 className="w-4 h-4 accent-emerald-600"
               />
             </label>
 
             <label className="flex items-center justify-between gap-2">
-              <span className="text-slate-700">Do you (or spouse) have another vehicle for personal use?</span>
+              <span className="text-slate-700">
+                Do you (or spouse) have another vehicle for personal use?
+              </span>
               <input
                 type="checkbox"
                 checked={form.another_vehicle_available}
-                onChange={(e) => setForm({ ...form, another_vehicle_available: e.target.checked })}
+                onChange={(e) =>
+                  setForm({ ...form, another_vehicle_available: e.target.checked })
+                }
                 className="w-4 h-4 accent-emerald-600"
               />
             </label>
 
             <label className="flex items-center justify-between gap-2">
-              <span className="text-slate-700">Do you have evidence to support your deduction?</span>
+              <span className="text-slate-700">
+                Do you have evidence to support your deduction?
+              </span>
               <input
                 type="checkbox"
                 checked={form.evidence_to_support}
@@ -211,7 +221,8 @@ export default function VehicleTab({ selectedYear, vehicles, onAddVehicle, onDel
         {vehicles.map((v, idx) => {
           const totalMiles =
             Number(v.business_miles) + Number(v.commuting_miles) + Number(v.other_miles);
-          const bizPct = totalMiles > 0 ? ((Number(v.business_miles) / totalMiles) * 100).toFixed(1) : '0.0';
+          const bizPct =
+            totalMiles > 0 ? ((Number(v.business_miles) / totalMiles) * 100).toFixed(1) : '0.0';
           return (
             <div key={v.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
               <div className="flex items-start justify-between">
@@ -221,8 +232,8 @@ export default function VehicleTab({ selectedYear, vehicles, onAddVehicle, onDel
                   </span>
                   <h3 className="text-base font-bold text-slate-900">{v.vehicle_model}</h3>
                   <p className="text-xs text-slate-500">
-                    {v.vehicle_type || 'Standard'} • Cost: {formatCurrency(v.vehicle_cost)} • In Service:{' '}
-                    {v.date_in_service || 'N/A'}
+                    {v.vehicle_type || 'Standard'} • Cost: {formatCurrency(v.vehicle_cost)} • In
+                    Service: {v.date_in_service || 'N/A'}
                   </p>
                 </div>
                 <button
@@ -236,15 +247,21 @@ export default function VehicleTab({ selectedYear, vehicles, onAddVehicle, onDel
               <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-slate-100 text-center">
                 <div>
                   <p className="text-[11px] text-slate-400 uppercase">Business</p>
-                  <p className="font-bold text-slate-800">{Number(v.business_miles).toLocaleString()}</p>
+                  <p className="font-bold text-slate-800">
+                    {Number(v.business_miles).toLocaleString()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 uppercase">Commuting</p>
-                  <p className="font-bold text-slate-800">{Number(v.commuting_miles).toLocaleString()}</p>
+                  <p className="font-bold text-slate-800">
+                    {Number(v.commuting_miles).toLocaleString()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 uppercase">Other</p>
-                  <p className="font-bold text-slate-800">{Number(v.other_miles).toLocaleString()}</p>
+                  <p className="font-bold text-slate-800">
+                    {Number(v.other_miles).toLocaleString()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[11px] text-slate-400 uppercase">Biz Use</p>

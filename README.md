@@ -1,48 +1,19 @@
-# Simple Bookkeeping System v2 — Web App
+# Simple Bookkeeping System v2.1 — Web App
 
 A multi-year small business bookkeeping and Schedule C reporting web application built with **React + Vite + Tailwind CSS** and backed by **Supabase (PostgreSQL + Auth)**.
 
-Users register with their own email and password (no Google account required), enter Income, Expenses, Vehicle Mileage, Cost of Goods Sold, and Home Office data year after year, and generate printable PDF or CSV reports filtered by Year, Month, or Date Range.
+Includes:
+- **Dashboard & Reports** (Year, Month, and Date Range filtering, CSV export, PDF print)
+- **Income & Operating Expenses** (10 Income categories + 23 IRS Schedule C categories)
+- **Owner's Draw** (Non-deductible equity withdrawals tracked separately from business expenses)
+- **Vehicle Information, Cost of Goods Sold, & Home Office Calculators**
+- **Next Steps Checklist** & **Custom Logo Support** (`public/logo.png`)
 
----
+## Upgrading an Existing Installation
 
-## Step 1: Set Up the Free Supabase Database
-
-1. Go to [supabase.com](https://supabase.com) and create a free project.
-2. Open **SQL Editor** in the left sidebar, paste the contents of `supabase/schema.sql`, and click **Run**.
-   - This creates the 5 database tables (`business_profiles`, `transactions`, `vehicles`, `cogs_records`, `home_office_records`) and enables **Row-Level Security (RLS)** so users can only view and edit their own financial records.
-3. Go to **Project Settings → API** and copy:
-   - **Project URL** (`VITE_SUPABASE_URL`)
-   - **anon public key** (`VITE_SUPABASE_ANON_KEY`)
-
-*(Optional)* Under **Authentication → Providers → Email**, you can toggle off "Confirm email" if you want new users to log in immediately after signing up.
-
----
-
-## Step 2: Push to GitHub
-
-1. Create a new repository on GitHub (e.g., `simple-bookkeeping-webapp`).
-2. Extract this ZIP and push all files to your repository:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial Simple Bookkeeping System v2 web app"
-   git branch -M main
-   git remote add origin https://github.com/YOUR-USERNAME/simple-bookkeeping-webapp.git
-   git push -u origin main
-   ```
-
----
-
-## Step 3: Deploy on Hostinger from GitHub
-
-1. Log in to **Hostinger hPanel** → **Websites** → **Add Website** → select **Node.js / Static / GitHub Deployment** (or **Hostinger Web Hosting → Git**).
-2. Connect your GitHub account and select your `simple-bookkeeping-webapp` repository (`main` branch).
-3. Configure the build settings:
-   - **Framework Preset:** Vite
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-4. Add your two Environment Variables in Hostinger's deployment settings:
-   - `VITE_SUPABASE_URL` = your Supabase Project URL
-   - `VITE_SUPABASE_ANON_KEY` = your Supabase anon public key
-5. Click **Deploy**. Every time you push updates to GitHub, Hostinger will automatically rebuild and publish your app.
+1. **Run `supabase/schema.sql` in Supabase SQL Editor:**
+   - Open your Supabase project → **SQL Editor**, paste the entire `supabase/schema.sql` file, and click **Run**. It safely adds the `owners_draws` table without touching your existing tables or data.
+2. **Add Your Logo (Optional):**
+   - Place your logo file inside `public/logo.png` (it automatically replaces the default icon in both the navbar and login page; if no `logo.png` is present, it falls back cleanly to the default icon).
+3. **Upload Updated Files to GitHub:**
+   - Upload the updated files to your GitHub repository—Hostinger will automatically rebuild and deploy v2.1.

@@ -7,6 +7,7 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   const handleSubmit = async (e) => {
@@ -20,7 +21,7 @@ export default function Auth() {
         if (error) throw error;
         setMessage({
           type: 'success',
-          text: 'Account created! Check your email to confirm (or sign in if email confirmation is disabled).',
+          text: 'Account created! Check your email to confirm (or sign in immediately if email confirmation is disabled).',
         });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -37,9 +38,18 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 bg-emerald-600 text-white rounded-xl">
-            <BookOpen className="w-6 h-6" />
-          </div>
+          {!logoError ? (
+            <img
+              src="/logo.png"
+              alt="Logo"
+              onError={() => setLogoError(true)}
+              className="h-11 w-auto object-contain rounded-lg"
+            />
+          ) : (
+            <div className="p-3 bg-emerald-600 text-white rounded-xl">
+              <BookOpen className="w-6 h-6" />
+            </div>
+          )}
           <div>
             <h1 className="text-xl font-bold text-slate-900">Simple Bookkeeping System</h1>
             <p className="text-xs text-slate-500">Multi-Year Small Business Ledger & Schedule C Reports</p>

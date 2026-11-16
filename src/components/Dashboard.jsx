@@ -5,12 +5,22 @@ import {
   MONTHS,
   formatCurrency,
 } from '../lib/constants';
-import { Printer, Download, Save, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
+import {
+  Printer,
+  Download,
+  Save,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Calendar,
+  Wallet,
+} from 'lucide-react';
 
 export default function Dashboard({
   profile,
   onSaveProfile,
   transactions,
+  draws,
   vehicles,
   cogs,
   homeOffice,
@@ -55,6 +65,24 @@ export default function Dashboard({
       return true;
     });
   }, [transactions, selectedYear, selectedMonth, startDate, endDate]);
+
+  // Filter Owner's Draws using the same Year, Month, and Date Range filters
+  const filteredDraws = useMemo(() => {
+    return (draws || []).filter((d) => {
+      if (Number(d.draw_year) !== Number(selectedYear)) return false;
+      if (selectedMonth !== 'ALL' && Number(d.draw_month) !== Number(selectedMonth)) {
+        return false;
+      }
+      if (startDate && d.draw_date < startDate) return false;
+      if (endDate && d.draw_date > endDate) return false;
+      return true;
+    });
+  }, [draws, selectedYear, selectedMonth, startDate, endDate]);
+
+  const totalOwnersDraw = useMemo(
+    () => filteredDraws.reduce((sum, d) => sum + Number(d.amount), 0),
+    [filteredDraws]
+  );
 
   // Year-only transactions for the 12-month Jan-Dec table & chart
   const yearTx = useMemo(() => {
@@ -159,15 +187,27 @@ export default function Dashboard({
       ['Business Activity', bizActivity || 'N/A'],
       ['NAICS Code', naicsCode || 'N/A'],
       ['Report Year', selectedYear],
-      ['Month Filter', selectedMonth === 'ALL' ? 'Full Year' : MONTHS.find((m) => m.value === Number(selectedMonth))?.full],
-      ['Date Range Filter', startDate || endDate ? `${startDate || 'Start'} to ${endDate || 'End'}` : 'None'],
+      [
+        'Month Filter',
+        selectedMonth === 'ALL'
+          ? 'Full Year'
+          : MONTHS.find((m) => m.value === Number(selectedMonth))?.full,
+      ],
+      [
+        'Date Range Filter',
+        startDate || endDate ? `${startDate || 'Start'} to ${endDate || 'End'}` : 'None',
+      ],
       [],
-      ['SUMMARY'],
+      ['SCHEDULE C PROFIT & LOSS SUMMARY'],
       ['Total Income', totalIncome.toFixed(2)],
       ['Cost of Goods Sold (Annual)', cogsTotal.toFixed(2)],
       ['Total Operating Expenses', totalExpenses.toFixed(2)],
       ['Home Office Deduction (Annual)', homeOfficeDeduction.toFixed(2)],
-      ['Net Profit / (Loss)', netProfit.toFixed(2)],
+      ['Taxable Net Profit / (Loss)', netProfit.toFixed(2)],
+      [],
+      ['EQUITY / NON-DEDUCTIBLE WITHDRAWALS'],
+      ["Owner's Draw (Not a Schedule C Expense)", totalOwnersDraw.toFixed(2)],
+      ['Net Cash Retained After Draw', (netProfit - totalOwnersDraw).toFixed(2)],
       [],
       ['INCOME BY CATEGORY', 'TOTAL'],
       ...INCOME_CATEGORIES.map((c) => [c, incomeByCategory[c].toFixed(2)]),
@@ -183,6 +223,15 @@ export default function Dashboard({
         t.category,
         `"${(t.description || '').replace(/"/g, '""')}"`,
         Number(t.amount).toFixed(2),
+      ]),
+      [],
+      ["OWNER'S DRAW LEDGER"],
+      ['Date', 'Method', 'Memo', 'Amount'],
+      ...filteredDraws.map((d) => [
+        d.draw_date,
+        d.payment_method,
+        `"${(d.description || '').replace(/"/g, '""')}"`,
+        Number(d.amount).toFixed(2),
       ]),
     ];
 
@@ -226,7 +275,7 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Business Metadata Form (Matches Dashboard rows 2-3) */}
+        {/* Business Metadata Form */}
         <form onSubmit={handleProfileSave} className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-5">
           <div>
             <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
@@ -353,15 +402,17 @@ export default function Dashboard({
         )}
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Summary Cards (5 Cards including Non-Deductible Owner's Draw) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
             <span>Gross Income</span>
             <TrendingUp className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-2xl font-bold text-slate-900 mt-2">{formatCurrency(totalIncome)}</p>
-          <p className="text-xs text-slate-400 mt-1">{filteredTx.filter((t) => t.type === 'income').length} entries</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {filteredTx.filter((t) => t.type === 'income').length} entries
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
@@ -370,7 +421,9 @@ export default function Dashboard({
             <TrendingDown className="w-4 h-4 text-rose-600" />
           </div>
           <p className="text-2xl font-bold text-slate-900 mt-2">{formatCurrency(totalExpenses)}</p>
-          <p className="text-xs text-slate-400 mt-1">{filteredTx.filter((t) => t.type === 'expense').length} entries</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {filteredTx.filter((t) => t.type === 'expense').length} entries
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
@@ -388,7 +441,7 @@ export default function Dashboard({
 
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase">
-            <span>Net Profit</span>
+            <span>Net Profit (Schedule C)</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <p
@@ -402,6 +455,19 @@ export default function Dashboard({
             {selectedMonth === 'ALL' && !startDate && !endDate
               ? 'Includes annual COGS & Home Office'
               : 'Filtered period cashflow'}
+          </p>
+        </div>
+
+        <div className="bg-indigo-50/70 rounded-xl border border-indigo-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between text-indigo-700 text-xs font-semibold uppercase">
+            <span>Owner's Draw</span>
+            <Wallet className="w-4 h-4 text-indigo-600" />
+          </div>
+          <p className="text-2xl font-bold text-indigo-900 mt-2">
+            {formatCurrency(totalOwnersDraw)}
+          </p>
+          <p className="text-xs text-indigo-600 mt-1">
+            {filteredDraws.length} draws (Non-deductible)
           </p>
         </div>
       </div>
@@ -426,7 +492,10 @@ export default function Dashboard({
               const incHeight = Math.round((m.income / maxMonthVal) * 100);
               const expHeight = Math.round((m.expenses / maxMonthVal) * 100);
               return (
-                <div key={m.value} className="flex-1 flex flex-col items-center h-full justify-end group">
+                <div
+                  key={m.value}
+                  className="flex-1 flex flex-col items-center h-full justify-end group"
+                >
                   <div className="w-full flex items-end justify-center gap-1 h-52">
                     <div
                       style={{ height: `${Math.max(incHeight, m.income > 0 ? 4 : 0)}%` }}
@@ -477,7 +546,7 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Category Totals (Matches Dashboard INCOME & EXPENSES tables) */}
+      {/* Category Totals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-bold text-slate-800 mb-3">Income by Category</h3>
@@ -536,6 +605,49 @@ export default function Dashboard({
         </div>
       </div>
 
+      {/* Owner's Draw Summary Section in Report */}
+      {filteredDraws.length > 0 && (
+        <div className="bg-white rounded-xl border border-indigo-200 p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 className="font-bold text-slate-800">
+                {selectedYear} Owner's Draw Summary (Equity Withdrawals)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Informational equity record only — excluded from Schedule C deductible expenses.
+              </p>
+            </div>
+            <div className="text-sm font-bold text-indigo-700">
+              Total Draws: {formatCurrency(totalOwnersDraw)}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500 uppercase">
+                  <th className="py-2 text-left">Date</th>
+                  <th className="py-2 text-left">Payment Method</th>
+                  <th className="py-2 text-left">Memo</th>
+                  <th className="py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredDraws.map((d) => (
+                  <tr key={d.id}>
+                    <td className="py-2 text-slate-700">{d.draw_date}</td>
+                    <td className="py-2 text-slate-600">{d.payment_method}</td>
+                    <td className="py-2 text-slate-600">{d.description || '—'}</td>
+                    <td className="py-2 text-right font-semibold text-indigo-700">
+                      {formatCurrency(d.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Vehicle Summary in Report if vehicles exist for the year */}
       {vehicles.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -556,13 +668,20 @@ export default function Dashboard({
                 {vehicles.map((v) => {
                   const totalMi =
                     Number(v.business_miles) + Number(v.commuting_miles) + Number(v.other_miles);
-                  const pct = totalMi > 0 ? ((Number(v.business_miles) / totalMi) * 100).toFixed(1) : '0.0';
+                  const pct =
+                    totalMi > 0 ? ((Number(v.business_miles) / totalMi) * 100).toFixed(1) : '0.0';
                   return (
                     <tr key={v.id}>
-                      <td className="py-2 font-medium text-slate-800">{v.vehicle_model || 'Vehicle'}</td>
+                      <td className="py-2 font-medium text-slate-800">
+                        {v.vehicle_model || 'Vehicle'}
+                      </td>
                       <td className="py-2 text-slate-600">{v.date_in_service || '—'}</td>
-                      <td className="py-2 text-right">{Number(v.business_miles).toLocaleString()}</td>
-                      <td className="py-2 text-right">{Number(v.commuting_miles).toLocaleString()}</td>
+                      <td className="py-2 text-right">
+                        {Number(v.business_miles).toLocaleString()}
+                      </td>
+                      <td className="py-2 text-right">
+                        {Number(v.commuting_miles).toLocaleString()}
+                      </td>
                       <td className="py-2 text-right">{Number(v.other_miles).toLocaleString()}</td>
                       <td className="py-2 text-right font-semibold text-emerald-600">{pct}%</td>
                     </tr>
