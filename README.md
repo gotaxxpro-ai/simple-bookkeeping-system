@@ -1,19 +1,8 @@
-# Simple Bookkeeping System v2.1 — Web App
+# Simple Bookkeeping System v2.2 — Web App
 
-A multi-year small business bookkeeping and Schedule C reporting web application built with **React + Vite + Tailwind CSS** and backed by **Supabase (PostgreSQL + Auth)**.
+Added in v2.2:
+- **CSV / Spreadsheet Import (`src/components/CsvImportModal.jsx`):** Upload CSVs exported from Google Sheets or bank statements, map columns automatically, review/edit categories in a preview table, and bulk-insert into Supabase.
+- **Inline Row Edit & Bulk Edit (`src/components/TransactionLedger.jsx`):** Edit any single transaction inline, or check multiple rows to bulk-change Category, bulk-update Date, or bulk-delete.
 
-Includes:
-- **Dashboard & Reports** (Year, Month, and Date Range filtering, CSV export, PDF print)
-- **Income & Operating Expenses** (10 Income categories + 23 IRS Schedule C categories)
-- **Owner's Draw** (Non-deductible equity withdrawals tracked separately from business expenses)
-- **Vehicle Information, Cost of Goods Sold, & Home Office Calculators**
-- **Next Steps Checklist** & **Custom Logo Support** (`public/logo.png`)
-
-## Upgrading an Existing Installation
-
-1. **Run `supabase/schema.sql` in Supabase SQL Editor:**
-   - Open your Supabase project → **SQL Editor**, paste the entire `supabase/schema.sql` file, and click **Run**. It safely adds the `owners_draws` table without touching your existing tables or data.
-2. **Add Your Logo (Optional):**
-   - Place your logo file inside `public/logo.png` (it automatically replaces the default icon in both the navbar and login page; if no `logo.png` is present, it falls back cleanly to the default icon).
-3. **Upload Updated Files to GitHub:**
-   - Upload the updated files to your GitHub repository—Hostinger will automatically rebuild and deploy v2.1.
+## Database Note
+No new SQL changes are required if you already ran `supabase/schema.sql` from v2.1—your existing `transactions` table and Row-Level Security policies already allow bulk inserts, updates, and deletes per user.

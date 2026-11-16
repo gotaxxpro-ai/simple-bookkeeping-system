@@ -125,9 +125,53 @@ export default function App() {
     }
   };
 
+  const handleBulkImportTransactions = async (rows) => {
+    const payload = rows.map((r) => ({ ...r, user_id: session.user.id }));
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert(payload)
+      .select();
+    if (!error && data) {
+      setTransactions((prev) => [...data, ...prev]);
+      if (data[0]?.tx_year) setSelectedYear(Number(data[0].tx_year));
+    }
+  };
+
+  const handleUpdateTransaction = async (id, updates) => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (!error && data) {
+      setTransactions((prev) => prev.map((t) => (t.id === id ? data : t)));
+    }
+  };
+
+  const handleBulkUpdateTransactions = async (ids, updates) => {
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .in('id', ids)
+      .select();
+    if (!error && data) {
+      const updatedMap = new Map(data.map((d) => [d.id, d]));
+      setTransactions((prev) => prev.map((t) => updatedMap.get(t.id) || t));
+    }
+  };
+
   const handleDeleteTransaction = async (id) => {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (!error) setTransactions((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleBulkDeleteTransactions = async (ids) => {
+    const { error } = await supabase.from('transactions').delete().in('id', ids);
+    if (!error) {
+      const idSet = new Set(ids);
+      setTransactions((prev) => prev.filter((t) => !idSet.has(t.id)));
+    }
   };
 
   const handleAddDraw = async (draw) => {
@@ -199,9 +243,6 @@ export default function App() {
             environment variables in Hostinger (or your local <code>.env</code> file) to enable user
             accounts and database storage.
           </p>
-          <p className="text-xs text-slate-500">
-            See <code>README.md</code> in this repository for step-by-step setup instructions.
-          </p>
         </div>
       </div>
     );
@@ -253,7 +294,7 @@ export default function App() {
             <div>
               <span className="font-bold text-base tracking-tight">Simple Bookkeeping System</span>
               <span className="hidden sm:inline-block ml-2 text-xs text-emerald-400 font-medium">
-                v2.1
+                v2.2
               </span>
             </div>
           </div>
@@ -318,7 +359,11 @@ export default function App() {
             transactions={transactions}
             selectedYear={selectedYear}
             onAddTransaction={handleAddTransaction}
+            onBulkImportTransactions={handleBulkImportTransactions}
+            onUpdateTransaction={handleUpdateTransaction}
+            onBulkUpdateTransactions={handleBulkUpdateTransactions}
             onDeleteTransaction={handleDeleteTransaction}
+            onBulkDeleteTransactions={handleBulkDeleteTransactions}
           />
         )}
 
@@ -328,7 +373,11 @@ export default function App() {
             transactions={transactions}
             selectedYear={selectedYear}
             onAddTransaction={handleAddTransaction}
+            onBulkImportTransactions={handleBulkImportTransactions}
+            onUpdateTransaction={handleUpdateTransaction}
+            onBulkUpdateTransactions={handleBulkUpdateTransactions}
             onDeleteTransaction={handleDeleteTransaction}
+            onBulkDeleteTransactions={handleBulkDeleteTransactions}
           />
         )}
 
