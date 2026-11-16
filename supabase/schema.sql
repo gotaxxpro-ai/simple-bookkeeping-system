@@ -288,8 +288,8 @@ create policy "Office admins read org home office" on public.home_office_records
 -- ============================================================================
 
 alter table public.organizations
-  add column if not exists plan_tier text default 'solo',
-  add column if not exists max_clients int default 50,
+  add column if not exists plan_tier text default 'service_bureau',
+  add column if not exists max_clients int default 999999,
   add column if not exists subscription_status text default 'active',
   add column if not exists stripe_customer_id text default '',
   add column if not exists stripe_subscription_id text default '',
@@ -301,7 +301,7 @@ create table if not exists public.pending_checkouts (
   slug text not null,
   brand_name text not null,
   admin_email text not null,
-  plan_tier text not null default 'solo',
+  plan_tier text not null default 'service_bureau',
   primary_color text default '#059669',
   logo_url text default '',
   status text default 'pending' check (status in ('pending', 'completed')),

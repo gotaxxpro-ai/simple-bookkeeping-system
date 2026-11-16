@@ -210,7 +210,7 @@ export default function OfficeAdminTab({
                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg"
               >
                 <CreditCard className="w-3.5 h-3.5" />
-                Manage Stripe Billing ({(tenant?.plan_tier || 'solo').toUpperCase()})
+                Manage Stripe Billing ({(tenant?.plan_tier || 'service_bureau').replace('_', ' ').toUpperCase()})
               </a>
             )}
           <div className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">

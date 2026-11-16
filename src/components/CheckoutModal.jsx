@@ -1,35 +1,46 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { X, ArrowRight, ShieldCheck, Building2, AlertCircle } from 'lucide-react';
+import { X, ArrowRight, ShieldCheck, Building2, UserCheck, AlertCircle } from 'lucide-react';
 
 const PLAN_DETAILS = {
-  solo: {
-    name: 'Solo Preparer Plan',
-    price: '$97/month',
-    clients: 'Up to 50 Schedule C clients',
-    envKey: 'VITE_STRIPE_LINK_SOLO',
+  b2c_monthly: {
+    name: 'B2C Business Owner — Monthly',
+    price: '$15/month',
+    summary: 'Full Schedule C Bookkeeping & Tax Reports (Billed Monthly)',
+    envKey: 'VITE_STRIPE_LINK_B2C_MONTHLY',
+    isWhiteLabelOffice: false,
   },
-  growth: {
-    name: 'Growth Tax Office Plan',
-    price: '$197/month',
-    clients: 'Up to 250 Schedule C clients',
-    envKey: 'VITE_STRIPE_LINK_GROWTH',
+  b2c_annual: {
+    name: 'B2C Business Owner — Annual',
+    price: '$129/year',
+    summary: 'Full Schedule C Bookkeeping & Tax Reports (Save $51/yr)',
+    envKey: 'VITE_STRIPE_LINK_B2C_ANNUAL',
+    isWhiteLabelOffice: false,
   },
-  bureau: {
-    name: 'Service Bureau Plan',
-    price: '$297/month',
-    clients: 'Unlimited Schedule C clients',
-    envKey: 'VITE_STRIPE_LINK_BUREAU',
+  service_bureau: {
+    name: 'Service Bureau White-Label',
+    price: '$29/month',
+    summary: 'White-Label Tax Office Portal + Client Report Dashboard',
+    envKey: 'VITE_STRIPE_LINK_SERVICE_BUREAU',
+    isWhiteLabelOffice: true,
+  },
+  b2b_onetime: {
+    name: 'B2B White-Label License',
+    price: '$249 one-time fee',
+    summary: 'Turnkey Branded Tax Office Portal — No Monthly Fees',
+    envKey: 'VITE_STRIPE_LINK_B2B_ONETIME',
+    isWhiteLabelOffice: true,
   },
 };
 
-export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEmail }) {
-  const plan = PLAN_DETAILS[planTier] || PLAN_DETAILS.growth;
+export default function CheckoutModal({ planTier = 'b2b_onetime', onClose, fallbackEmail }) {
+  const plan = PLAN_DETAILS[planTier] || PLAN_DETAILS.b2b_onetime;
 
   const stripeLinks = {
-    solo: import.meta.env.VITE_STRIPE_LINK_SOLO || '',
-    growth: import.meta.env.VITE_STRIPE_LINK_GROWTH || '',
-    bureau: import.meta.env.VITE_STRIPE_LINK_BUREAU || '',
+    b2c_monthly: import.meta.env.VITE_STRIPE_LINK_B2C_MONTHLY || '',
+    b2c_annual: import.meta.env.VITE_STRIPE_LINK_B2C_ANNUAL || '',
+    service_bureau: import.meta.env.VITE_STRIPE_LINK_SERVICE_BUREAU || '',
+    b2b_onetime: import.meta.env.VITE_STRIPE_LINK_B2B_ONETIME || '',
   };
   const activeStripeUrl = stripeLinks[planTier];
 
@@ -55,16 +66,6 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
     e.preventDefault();
     setErrorMsg('');
 
-    const cleanSlug = slug
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-');
-
-    if (!cleanSlug || cleanSlug === 'default') {
-      setErrorMsg('Please choose a valid URL slug for your tax office.');
-      return;
-    }
-
     if (!activeStripeUrl) {
       setErrorMsg(
         `Stripe Payment Link (${plan.envKey}) is not configured yet. Add it in your Hostinger environment variables.`
@@ -72,28 +73,44 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
       return;
     }
 
+    let cleanSlug = slug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-');
+
+    if (plan.isWhiteLabelOffice && (!cleanSlug || cleanSlug === 'default')) {
+      setErrorMsg('Please choose a valid URL slug for your tax office.');
+      return;
+    }
+
+    if (!plan.isWhiteLabelOffice) {
+      cleanSlug = `b2c-${Date.now()}`;
+    }
+
     setLoading(true);
     try {
-      // Check if slug is already taken
-      const { data: existingOrg } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('slug', cleanSlug)
-        .maybeSingle();
+      if (plan.isWhiteLabelOffice) {
+        const { data: existingOrg } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('slug', cleanSlug)
+          .maybeSingle();
 
-      if (existingOrg) {
-        setErrorMsg('That portal URL slug is already taken. Please try another name.');
-        setLoading(false);
-        return;
+        if (existingOrg) {
+          setErrorMsg('That portal URL slug is already taken. Please try another name.');
+          setLoading(false);
+          return;
+        }
       }
 
-      // Save pending checkout record so Stripe webhook provisions the tenant automatically
       const { data: pending, error } = await supabase
         .from('pending_checkouts')
         .insert([
           {
             slug: cleanSlug,
-            brand_name: brandName.trim(),
+            brand_name: plan.isWhiteLabelOffice
+              ? brandName.trim()
+              : brandName.trim() || adminEmail.trim(),
             admin_email: adminEmail.trim().toLowerCase(),
             plan_tier: planTier,
             primary_color: primaryColor,
@@ -105,11 +122,11 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
 
       if (error) throw error;
 
-      // Remember this slug locally so when Stripe redirects back, the buyer lands on their branded portal
-      localStorage.setItem('active_office_slug', cleanSlug);
+      if (plan.isWhiteLabelOffice) {
+        localStorage.setItem('active_office_slug', cleanSlug);
+      }
       localStorage.setItem('pending_admin_email', adminEmail.trim().toLowerCase());
 
-      // Redirect to Stripe Payment Link with client_reference_id & prefilled_email
       const separator = activeStripeUrl.includes('?') ? '&' : '?';
       const checkoutUrl = `${activeStripeUrl}${separator}client_reference_id=${encodeURIComponent(
         pending.id
@@ -131,12 +148,16 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
     <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-emerald-400" />
+          <div className="flex items-center gap-2.5">
+            {plan.isWhiteLabelOffice ? (
+              <Building2 className="w-5 h-5 text-emerald-400" />
+            ) : (
+              <UserCheck className="w-5 h-5 text-emerald-400" />
+            )}
             <div>
-              <h3 className="font-bold text-base">Set Up Your White-Label Portal</h3>
+              <h3 className="font-bold text-base">{plan.name}</h3>
               <p className="text-xs text-slate-300">
-                {plan.name} • {plan.price} ({plan.clients})
+                {plan.price} • {plan.summary}
               </p>
             </div>
           </div>
@@ -154,7 +175,7 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
                 {!activeStripeUrl && fallbackEmail && (
                   <a
                     href={`mailto:${fallbackEmail}?subject=${encodeURIComponent(
-                      `White-Label Setup - ${plan.name}`
+                      `Plan Setup - ${plan.name} (${plan.price})`
                     )}`}
                     className="underline font-bold mt-1 inline-block"
                   >
@@ -165,90 +186,126 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-              Tax Office Brand Name
-            </label>
-            <input
-              type="text"
-              required
-              value={brandName}
-              onChange={(e) => handleBrandNameChange(e.target.value)}
-              placeholder="e.g., Apex Tax & Accounting"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-              Portal URL Slug
-            </label>
-            <input
-              type="text"
-              required
-              value={slug}
-              onChange={(e) =>
-                setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))
-              }
-              placeholder="apex-tax"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
-            />
-            <p className="text-[11px] text-slate-500 mt-1 truncate">
-              Your client link: <span className="font-mono text-emerald-700">{previewUrl}</span>
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-              Tax Office Admin Email
-            </label>
-            <input
-              type="email"
-              required
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="owner@apextax.com"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Use this same email when signing in to access your Tax Office Admin panel.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                Brand Accent Color
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="h-9 w-12 border border-slate-300 rounded cursor-pointer"
-                />
+          {plan.isWhiteLabelOffice ? (
+            <>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                  Tax Office Brand Name
+                </label>
                 <input
                   type="text"
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                  required
+                  value={brandName}
+                  onChange={(e) => handleBrandNameChange(e.target.value)}
+                  placeholder="e.g., Apex Tax & Accounting"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                Logo URL (Optional)
-              </label>
-              <input
-                type="url"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://.../logo.png"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
-              />
-            </div>
-          </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                  Portal URL Slug
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={slug}
+                  onChange={(e) =>
+                    setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))
+                  }
+                  placeholder="apex-tax"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                />
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                  Your client link: <span className="font-mono text-emerald-700">{previewUrl}</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                  Tax Office Admin Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="owner@apextax.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Sign in with this email after checkout to access your Tax Office Admin panel.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                    Brand Accent Color
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={primaryColor}
+                      onChange={(e) => setPrimaryColor(e.target.value)}
+                      className="h-9 w-12 border border-slate-300 rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={primaryColor}
+                      onChange={(e) => setPrimaryColor(e.target.value)}
+                      className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                    Logo URL (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    placeholder="https://.../logo.png"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                  Business Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  placeholder="e.g., Smith Consulting LLC"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
+                  Your Account Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="you@business.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Use this email to create or access your bookkeeping account right after checkout.
+                </p>
+              </div>
+            </>
+          )}
 
           <div className="pt-2">
             <button
@@ -256,12 +313,12 @@ export default function CheckoutModal({ planTier = 'growth', onClose, fallbackEm
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow transition disabled:opacity-50"
             >
-              {loading ? 'Preparing Checkout...' : `Continue to Stripe Checkout (${plan.price})`}
+              {loading ? 'Preparing Checkout...' : `Continue to Stripe (${plan.price})`}
               <ArrowRight className="w-4 h-4" />
             </button>
             <p className="text-[11px] text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              Secure subscription billing powered by Stripe. Cancel anytime.
+              Secure checkout powered by Stripe.
             </p>
           </div>
         </form>
