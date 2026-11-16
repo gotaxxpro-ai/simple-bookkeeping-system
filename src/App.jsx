@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { resolveTenantOrganization, DEFAULT_BRAND } from './lib/tenant';
 import Auth from './components/Auth';
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import TransactionLedger from './components/TransactionLedger';
 import OwnersDrawTab from './components/OwnersDrawTab';
@@ -29,6 +30,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [authScreenMode, setAuthScreenMode] = useState(null); // null = LandingPage, 'login' | 'signup' = Auth
   const [logoError, setLogoError] = useState(false);
 
   // Multi-tenant white-label state
@@ -101,8 +103,15 @@ export default function App() {
 
     if (!mem && resolvedOrg?.id) {
       const superEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || '').toLowerCase();
+      const isOrgOwner =
+        resolvedOrg?.support_email &&
+        (user.email || '').toLowerCase() === resolvedOrg.support_email.toLowerCase();
       const role =
-        (user.email || '').toLowerCase() === superEmail ? 'super_admin' : 'client';
+        (user.email || '').toLowerCase() === superEmail
+          ? 'super_admin'
+          : isOrgOwner
+          ? 'office_admin'
+          : 'client';
 
       const { data: createdMem } = await supabase
         .from('user_memberships')
@@ -336,7 +345,21 @@ export default function App() {
   }
 
   if (!session) {
-    return <Auth tenant={tenant} />;
+    if (!authScreenMode) {
+      return (
+        <LandingPage
+          tenant={tenant}
+          onOpenAuth={(mode) => setAuthScreenMode(mode)}
+        />
+      );
+    }
+    return (
+      <Auth
+        tenant={tenant}
+        initialMode={authScreenMode}
+        onBackHome={() => setAuthScreenMode(null)}
+      />
+    );
   }
 
   const activeVehicles = vehicles.filter((v) => Number(v.tax_year) === Number(selectedYear));

@@ -282,3 +282,38 @@ create policy "Office admins read org home office" on public.home_office_records
         and (m.organization_id = public.admin_org_id() or public.is_super_admin())
     )
   );
+
+-- ============================================================================
+-- 4. STRIPE BILLING & AUTOMATED TENANT PROVISIONING (v3.2)
+-- ============================================================================
+
+alter table public.organizations
+  add column if not exists plan_tier text default 'solo',
+  add column if not exists max_clients int default 50,
+  add column if not exists subscription_status text default 'active',
+  add column if not exists stripe_customer_id text default '',
+  add column if not exists stripe_subscription_id text default '',
+  add column if not exists current_period_end timestamptz;
+
+-- Stores pre-checkout onboarding details before redirecting to Stripe Payment Link
+create table if not exists public.pending_checkouts (
+  id uuid primary key default uuid_generate_v4(),
+  slug text not null,
+  brand_name text not null,
+  admin_email text not null,
+  plan_tier text not null default 'solo',
+  primary_color text default '#059669',
+  logo_url text default '',
+  status text default 'pending' check (status in ('pending', 'completed')),
+  created_at timestamptz default now()
+);
+
+alter table public.pending_checkouts enable row level security;
+
+drop policy if exists "Public can insert pending checkouts" on public.pending_checkouts;
+create policy "Public can insert pending checkouts" on public.pending_checkouts
+  for insert with check (true);
+
+drop policy if exists "Super admins read pending checkouts" on public.pending_checkouts;
+create policy "Super admins read pending checkouts" on public.pending_checkouts
+  for select using (public.is_super_admin());

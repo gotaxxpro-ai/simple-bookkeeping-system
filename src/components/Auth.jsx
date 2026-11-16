@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BookOpen, Lock, Mail, ArrowRight, User } from 'lucide-react';
 
-export default function Auth({ tenant }) {
-  const [isSignUp, setIsSignUp] = useState(false);
+export default function Auth({ tenant, initialMode = 'login', onBackHome }) {
+  const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,7 +66,16 @@ export default function Auth({ tenant }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 px-4">
+      {onBackHome && (
+        <button
+          type="button"
+          onClick={onBackHome}
+          className="mb-4 text-xs font-semibold text-slate-600 hover:text-slate-900 underline"
+        >
+          ← Back to Overview
+        </button>
+      )}
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-8">
         <div className="flex items-center gap-3 mb-6">
           {!logoError && logoSrc ? (

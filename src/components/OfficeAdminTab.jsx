@@ -11,6 +11,7 @@ import {
   Plus,
   ShieldCheck,
   Palette,
+  CreditCard,
 } from 'lucide-react';
 
 export default function OfficeAdminTab({
@@ -170,6 +171,8 @@ export default function OfficeAdminTab({
     loadOfficeClients();
   };
 
+  const customerPortalUrl = import.meta.env.VITE_STRIPE_CUSTOMER_PORTAL_URL || '';
+
   const shareableUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/?office=${tenant?.slug || 'default'}`
@@ -198,6 +201,18 @@ export default function OfficeAdminTab({
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            {customerPortalUrl && (
+              <a
+                href={customerPortalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                Manage Stripe Billing ({(tenant?.plan_tier || 'solo').toUpperCase()})
+              </a>
+            )}
           <div className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
             <span className="text-xs font-mono text-slate-700 truncate max-w-xs">
               {shareableUrl}
@@ -210,6 +225,7 @@ export default function OfficeAdminTab({
               {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copiedLink ? 'Copied' : 'Copy Client Link'}
             </button>
+          </div>
           </div>
         </div>
 
