@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KeyRound, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { KeyRound, X, CheckCircle2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function ChangePasswordModal({
@@ -7,6 +7,7 @@ export default function ChangePasswordModal({
   onClose,
   primaryColor = '#059669',
   isRecoveryMode = false,
+  forceChange = false,
 }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -31,17 +32,21 @@ export default function ChangePasswordModal({
 
     setSaving(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      // Update password AND clear the must_change_password metadata flag
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { must_change_password: false },
+      });
       if (error) throw error;
 
-      setStatus({ type: 'success', text: 'Your password has been updated successfully.' });
+      setStatus({ type: 'success', text: 'Your new password is set! Unlocking your workspace...' });
       setNewPassword('');
       setConfirmPassword('');
 
       setTimeout(() => {
         setStatus(null);
         onClose();
-      }, 1500);
+      }, 1200);
     } catch (err) {
       setStatus({ type: 'error', text: err.message || 'Could not update password.' });
     } finally {
@@ -50,25 +55,41 @@ export default function ChangePasswordModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-emerald-600" />
             <h3 className="text-base font-bold text-slate-900">
-              {isRecoveryMode ? 'Set Your New Password' : 'Change Account Password'}
+              {forceChange
+                ? 'Create Your Permanent Password'
+                : isRecoveryMode
+                ? 'Set Your New Password'
+                : 'Change Account Password'}
             </h3>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          {!forceChange && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {forceChange && (
+            <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
+              <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <span>
+                Welcome! You signed in using a temporary password created by your administrator. Please choose a personal password before accessing your bookkeeping portal.
+              </span>
+            </div>
+          )}
+
           {status && (
             <div
               className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-medium ${
@@ -117,20 +138,24 @@ export default function ChangePasswordModal({
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
-            >
-              Cancel
-            </button>
+            {!forceChange && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50"
+              className={`${
+                forceChange ? 'w-full' : ''
+              } px-5 py-2.5 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50`}
               style={{ backgroundColor: primaryColor }}
             >
-              {saving ? 'Updating...' : 'Update Password'}
+              {saving ? 'Saving Password...' : 'Save Password & Continue'}
             </button>
           </div>
         </form>
