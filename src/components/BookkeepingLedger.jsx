@@ -25,10 +25,25 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+const createEmptyVehicle = () => ({
+  id: `veh_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+  vehicle_model: '',
+  vehicle_type: '',
+  vehicle_cost: 0,
+  date_placed_in_service: '',
+  business_miles: 0,
+  commuting_miles: 0,
+  other_miles: 0,
+  available_off_duty: false,
+  another_vehicle_available: true,
+  has_written_evidence: true,
+});
+
 const DEFAULT_WORKSHEET = {
   business_name: '',
   business_activity: '',
   naics_code: '',
+  vehicles: [],
   vehicle_model: '',
   vehicle_type: '',
   vehicle_cost: 0,
@@ -60,7 +75,7 @@ const NEXT_STEPS_LIST = [
   { id: 'profile', title: 'Complete Business Profile & NAICS Code', desc: 'Enter your legal business name, business activity, and 6-digit NAICS code.' },
   { id: 'income', title: 'Record All Gross Income & 1099s', desc: 'Log all client payments, Stripe/Square payouts, and 1099-NEC/1099-K income.' },
   { id: 'expenses', title: 'Categorize Operating Expenses', desc: 'Match every bank and business card charge to an IRS Schedule C expense line.' },
-  { id: 'vehicle', title: 'Log Business Mileage & Vehicle Details', desc: 'Enter business, commuting, and personal miles plus date placed in service.' },
+  { id: 'vehicle', title: 'Log Business Mileage & Vehicle Details', desc: 'Enter business, commuting, and personal miles plus date placed in service for each vehicle.' },
   { id: 'cogs_home', title: 'Review Cost of Goods Sold & Home Office', desc: 'Update inventory totals (if selling products) and home office square footage.' },
   { id: 'draws', title: 'Verify Owner’s Draws', desc: 'Ensure personal transfers are logged under Owner’s Draw and excluded from expenses.' },
   { id: 'export', title: 'Export Schedule C Report & Email Tax Office', desc: 'Download your Schedule C CSV summary and notify your tax preparer for review.' },
@@ -207,9 +222,37 @@ export default function BookkeepingLedger({
       setTransactions(txRes.data || []);
 
       if (!wsRes.error && wsRes.data) {
+        let loadedVehicles = Array.isArray(wsRes.data.vehicles) ? wsRes.data.vehicles : [];
+
+        if (
+          loadedVehicles.length === 0 &&
+          (wsRes.data.vehicle_model ||
+            wsRes.data.vehicle_type ||
+            Number(wsRes.data.business_miles) > 0 ||
+            Number(wsRes.data.commuting_miles) > 0 ||
+            Number(wsRes.data.other_miles) > 0)
+        ) {
+          loadedVehicles = [
+            {
+              ...createEmptyVehicle(),
+              vehicle_model: wsRes.data.vehicle_model || '',
+              vehicle_type: wsRes.data.vehicle_type || '',
+              vehicle_cost: Number(wsRes.data.vehicle_cost) || 0,
+              date_placed_in_service: wsRes.data.date_placed_in_service || '',
+              business_miles: Number(wsRes.data.business_miles) || 0,
+              commuting_miles: Number(wsRes.data.commuting_miles) || 0,
+              other_miles: Number(wsRes.data.other_miles) || 0,
+              available_off_duty: Boolean(wsRes.data.available_off_duty),
+              another_vehicle_available: Boolean(wsRes.data.another_vehicle_available),
+              has_written_evidence: Boolean(wsRes.data.has_written_evidence),
+            },
+          ];
+        }
+
         setWorksheet({
           ...DEFAULT_WORKSHEET,
           ...wsRes.data,
+          vehicles: loadedVehicles,
           date_placed_in_service: wsRes.data.date_placed_in_service || '',
           next_steps_completed: wsRes.data.next_steps_completed || {},
         });
@@ -405,6 +448,7 @@ export default function BookkeepingLedger({
       setImportingCsv(false);
     }
   };
+
   const handleAddEntry = async (e, entryType) => {
     e.preventDefault();
     if (readOnly) return;
@@ -458,28 +502,71 @@ export default function BookkeepingLedger({
     }
   };
 
+  const handleAddVehicle = () => {
+    if (readOnly) return;
+    setWorksheet((prev) => ({
+      ...prev,
+      vehicles: [...(prev.vehicles || []), createEmptyVehicle()],
+    }));
+  };
+
+  const handleUpdateVehicle = (vehicleId, field, value) => {
+    if (readOnly) return;
+    setWorksheet((prev) => ({
+      ...prev,
+      vehicles: (prev.vehicles || []).map((v) =>
+        v.id === vehicleId ? { ...v, [field]: value } : v
+      ),
+    }));
+  };
+
+  const handleRemoveVehicle = (vehicleId) => {
+    if (readOnly || !window.confirm('Remove this vehicle from your worksheet?')) return;
+    setWorksheet((prev) => ({
+      ...prev,
+      vehicles: (prev.vehicles || []).filter((v) => v.id !== vehicleId),
+    }));
+  };
+
   const handleSaveWorksheet = async (e, customNextSteps = null) => {
     if (e) e.preventDefault();
     if (readOnly) return;
     setSavingWorksheet(true);
     setStatusMessage(null);
     try {
+      const sanitizedVehicles = (worksheet.vehicles || []).map((v) => ({
+        id: v.id || createEmptyVehicle().id,
+        vehicle_model: (v.vehicle_model || '').trim(),
+        vehicle_type: (v.vehicle_type || '').trim(),
+        vehicle_cost: Number(v.vehicle_cost) || 0,
+        date_placed_in_service: v.date_placed_in_service || '',
+        business_miles: Number(v.business_miles) || 0,
+        commuting_miles: Number(v.commuting_miles) || 0,
+        other_miles: Number(v.other_miles) || 0,
+        available_off_duty: Boolean(v.available_off_duty),
+        another_vehicle_available: Boolean(v.another_vehicle_available),
+        has_written_evidence: Boolean(v.has_written_evidence),
+      }));
+
+      const primaryVehicle = sanitizedVehicles[0] || DEFAULT_WORKSHEET;
+
       const payload = {
         user_id: targetUserId,
         tax_year: selectedYear,
         business_name: worksheet.business_name,
         business_activity: worksheet.business_activity,
         naics_code: worksheet.naics_code,
-        vehicle_model: worksheet.vehicle_model,
-        vehicle_type: worksheet.vehicle_type,
-        vehicle_cost: Number(worksheet.vehicle_cost) || 0,
-        date_placed_in_service: worksheet.date_placed_in_service || null,
-        business_miles: Number(worksheet.business_miles) || 0,
-        commuting_miles: Number(worksheet.commuting_miles) || 0,
-        other_miles: Number(worksheet.other_miles) || 0,
-        available_off_duty: Boolean(worksheet.available_off_duty),
-        another_vehicle_available: Boolean(worksheet.another_vehicle_available),
-        has_written_evidence: Boolean(worksheet.has_written_evidence),
+        vehicles: sanitizedVehicles,
+        vehicle_model: primaryVehicle.vehicle_model,
+        vehicle_type: primaryVehicle.vehicle_type,
+        vehicle_cost: Number(primaryVehicle.vehicle_cost) || 0,
+        date_placed_in_service: primaryVehicle.date_placed_in_service || null,
+        business_miles: Number(primaryVehicle.business_miles) || 0,
+        commuting_miles: Number(primaryVehicle.commuting_miles) || 0,
+        other_miles: Number(primaryVehicle.other_miles) || 0,
+        available_off_duty: Boolean(primaryVehicle.available_off_duty),
+        another_vehicle_available: Boolean(primaryVehicle.another_vehicle_available),
+        has_written_evidence: Boolean(primaryVehicle.has_written_evidence),
         cogs_beginning_inventory: Number(worksheet.cogs_beginning_inventory) || 0,
         cogs_purchases: Number(worksheet.cogs_purchases) || 0,
         cogs_personal_withdrawals: Number(worksheet.cogs_personal_withdrawals) || 0,
@@ -520,7 +607,6 @@ export default function BookkeepingLedger({
     setWorksheet((prev) => ({ ...prev, next_steps_completed: updatedSteps }));
     await handleSaveWorksheet(null, updatedSteps);
   };
-
   const calculations = useMemo(() => {
     const netPurchases = (Number(worksheet.cogs_purchases) || 0) - (Number(worksheet.cogs_personal_withdrawals) || 0);
     const totalGoodsAvailable =
@@ -531,11 +617,12 @@ export default function BookkeepingLedger({
       (Number(worksheet.cogs_other_costs) || 0);
     const totalCogs = Math.max(0, totalGoodsAvailable - (Number(worksheet.cogs_ending_inventory) || 0));
 
-    const bizMiles = Number(worksheet.business_miles) || 0;
-    const commMiles = Number(worksheet.commuting_miles) || 0;
-    const otherMiles = Number(worksheet.other_miles) || 0;
-    const totalMiles = bizMiles + commMiles + otherMiles;
-    const businessUsePct = totalMiles > 0 ? (bizMiles / totalMiles) * 100 : 0;
+    const vehicleList = Array.isArray(worksheet.vehicles) ? worksheet.vehicles : [];
+    const totalBusinessMiles = vehicleList.reduce((sum, v) => sum + (Number(v.business_miles) || 0), 0);
+    const totalCommutingMiles = vehicleList.reduce((sum, v) => sum + (Number(v.commuting_miles) || 0), 0);
+    const totalOtherMiles = vehicleList.reduce((sum, v) => sum + (Number(v.other_miles) || 0), 0);
+    const totalMiles = totalBusinessMiles + totalCommutingMiles + totalOtherMiles;
+    const businessUsePct = totalMiles > 0 ? (totalBusinessMiles / totalMiles) * 100 : 0;
 
     const officeSqft = Number(worksheet.home_office_sqft) || 0;
     const totalHomeSqft = Number(worksheet.home_total_sqft) || 0;
@@ -610,6 +697,9 @@ export default function BookkeepingLedger({
       homeBusinessPct,
       netProfit,
       totalOwnersDraw,
+      totalBusinessMiles,
+      totalCommutingMiles,
+      totalOtherMiles,
       totalMiles,
       businessUsePct,
       incomeLines: allLines.filter((l) => l.type === 'income'),
@@ -631,7 +721,8 @@ export default function BookkeepingLedger({
       `Cost of Goods Sold (Line 4): ${formatCurrency(calculations.totalCogs)}\n` +
       `Total Deductible Expenses: ${formatCurrency(calculations.totalDeductibleExpenses + calculations.homeOfficeDeduction)}\n` +
       `Estimated Net Profit (Line 31): ${formatCurrency(calculations.netProfit)}\n` +
-      `Owner's Draw (YTD Non-Deductible): ${formatCurrency(calculations.totalOwnersDraw)}\n\n` +
+      `Owner's Draw (YTD Non-Deductible): ${formatCurrency(calculations.totalOwnersDraw)}\n` +
+      `Vehicles Logged: ${(worksheet.vehicles || []).length} (${calculations.totalBusinessMiles.toLocaleString()} business miles)\n\n` +
       `I have exported my ${selectedYear} Schedule C CSV report and am ready for your review.\n\n` +
       `Best regards,\n${targetUserName || ''}`
     );
@@ -705,15 +796,23 @@ export default function BookkeepingLedger({
       ['Net Profit', 'Line 31', 'Net Profit or (Loss)', '', '', '', calculations.netProfit.toFixed(2)],
       [],
       ['Memo / Equity', 'Non-Deductible', 'Total Owner Draws', '', calculations.totalOwnersDraw.toFixed(2), '0%', '0.00'],
-      [
-        'Part IV - Vehicle',
-        'Miles',
-        `Business: ${worksheet.business_miles} | Commuting: ${worksheet.commuting_miles} | Other: ${worksheet.other_miles} (${calculations.businessUsePct.toFixed(1)}% Business)`,
-        '',
-        '',
-        '',
-        '',
-      ],
+      ...(worksheet.vehicles || []).map((v, idx) => {
+        const vBiz = Number(v.business_miles) || 0;
+        const vComm = Number(v.commuting_miles) || 0;
+        const vOther = Number(v.other_miles) || 0;
+        const vTot = vBiz + vComm + vOther;
+        const vPct = vTot > 0 ? ((vBiz / vTot) * 100).toFixed(1) : '0.0';
+        const label = [v.vehicle_model, v.vehicle_type].filter(Boolean).join(' ') || `Vehicle #${idx + 1}`;
+        return [
+          `Part IV - Vehicle #${idx + 1}`,
+          'Miles',
+          `"${label} (Placed in service: ${v.date_placed_in_service || 'N/A'}) — Business: ${vBiz} | Commuting: ${vComm} | Other: ${vOther} (${vPct}% Business)"`,
+          '',
+          '',
+          '',
+          '',
+        ];
+      }),
     ];
     const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((r) => r.join(',')).join('\n');
     const link = document.createElement('a');
@@ -1111,150 +1210,245 @@ export default function BookkeepingLedger({
         </div>
       )}
 
-      {/* TAB 3: VEHICLE INFO */}
+      {/* TAB 3: MULTI-VEHICLE INFO (SCHEDULE C PART IV) */}
       {activeTab === 'vehicle' && (
-        <form onSubmit={handleSaveWorksheet} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <form onSubmit={handleSaveWorksheet} className="space-y-6">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="text-lg font-bold text-slate-800">
                 Vehicle Information — Schedule C Part IV ({selectedYear})
               </h3>
               <p className="text-xs text-slate-500">
-                Required by the IRS when claiming standard mileage or actual vehicle expenses.
+                Add each vehicle used for business during {selectedYear}. Each vehicle calculates its own IRS business-use percentage.
               </p>
             </div>
-            <div className="text-right">
-              <div className="text-xs font-semibold text-slate-500 uppercase">Business Use %</div>
-              <div className="text-xl font-bold text-emerald-700">{calculations.businessUsePct.toFixed(1)}%</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Vehicle Make / Model</label>
-              <input
-                type="text"
-                disabled={readOnly}
-                placeholder="e.g., Chevrolet / Ford"
-                value={worksheet.vehicle_model}
-                onChange={(e) => setWorksheet({ ...worksheet, vehicle_model: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Vehicle Year &amp; Type</label>
-              <input
-                type="text"
-                disabled={readOnly}
-                placeholder="e.g., 2022 F-150 Truck"
-                value={worksheet.vehicle_type}
-                onChange={(e) => setWorksheet({ ...worksheet, vehicle_type: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Vehicle Purchase Cost ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                disabled={readOnly}
-                value={worksheet.vehicle_cost}
-                onChange={(e) => setWorksheet({ ...worksheet, vehicle_cost: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Date Placed in Service</label>
-              <input
-                type="date"
-                disabled={readOnly}
-                value={worksheet.date_placed_in_service}
-                onChange={(e) => setWorksheet({ ...worksheet, date_placed_in_service: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-          </div>
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <h4 className="text-xs font-bold text-slate-700 uppercase">
-              {selectedYear} Mileage Breakdown (Total Miles: {calculations.totalMiles.toLocaleString()})
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Business Miles</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  disabled={readOnly}
-                  value={worksheet.business_miles}
-                  onChange={(e) => setWorksheet({ ...worksheet, business_miles: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
-                />
+
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="text-right">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase">Combined Business Miles</div>
+                <div className="text-lg font-bold text-emerald-700">
+                  {calculations.totalBusinessMiles.toLocaleString()} mi ({calculations.businessUsePct.toFixed(1)}%)
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Commuting Miles</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  disabled={readOnly}
-                  value={worksheet.commuting_miles}
-                  onChange={(e) => setWorksheet({ ...worksheet, commuting_miles: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Other / Personal Miles</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  disabled={readOnly}
-                  value={worksheet.other_miles}
-                  onChange={(e) => setWorksheet({ ...worksheet, other_miles: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
-                />
-              </div>
+
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={handleAddVehicle}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Vehicle
+                </button>
+              )}
             </div>
           </div>
-          <div className="space-y-3 text-sm text-slate-700">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={readOnly}
-                checked={worksheet.available_off_duty}
-                onChange={(e) => setWorksheet({ ...worksheet, available_off_duty: e.target.checked })}
-                className="rounded border-slate-300 text-emerald-600"
-              />
-              <span>Was your vehicle available for personal use during off-duty hours?</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={readOnly}
-                checked={worksheet.another_vehicle_available}
-                onChange={(e) => setWorksheet({ ...worksheet, another_vehicle_available: e.target.checked })}
-                className="rounded border-slate-300 text-emerald-600"
-              />
-              <span>Do you (or your spouse) have another vehicle available for personal use?</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={readOnly}
-                checked={worksheet.has_written_evidence}
-                onChange={(e) => setWorksheet({ ...worksheet, has_written_evidence: e.target.checked })}
-                className="rounded border-slate-300 text-emerald-600"
-              />
-              <span>Do you have written evidence (mileage log / app) to support your deduction?</span>
-            </label>
-          </div>
-          {!readOnly && (
-            <div className="pt-2 flex justify-end">
+
+          {(worksheet.vehicles || []).length === 0 ? (
+            <div className="bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center space-y-3">
+              <Car className="w-8 h-8 text-slate-400 mx-auto" />
+              <div className="text-sm font-semibold text-slate-700">
+                No vehicles added for {selectedYear} yet
+              </div>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Click <strong>Add Vehicle</strong> to log your business vehicle details, date placed in service, and annual mileage breakdown.
+              </p>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={handleAddVehicle}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Plus className="w-4 h-4" />
+                  Add First Vehicle
+                </button>
+              )}
+            </div>
+          ) : (
+            (worksheet.vehicles || []).map((veh, idx) => {
+              const vBiz = Number(veh.business_miles) || 0;
+              const vComm = Number(veh.commuting_miles) || 0;
+              const vOther = Number(veh.other_miles) || 0;
+              const vTotal = vBiz + vComm + vOther;
+              const vPct = vTotal > 0 ? (vBiz / vTotal) * 100 : 0;
+
+              return (
+                <div
+                  key={veh.id}
+                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="w-7 h-7 rounded-lg text-white text-xs font-bold flex items-center justify-center"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <h4 className="text-base font-bold text-slate-800">
+                          {veh.vehicle_model || veh.vehicle_type
+                            ? `${veh.vehicle_model} ${veh.vehicle_type}`.trim()
+                            : `Business Vehicle #${idx + 1}`}
+                        </h4>
+                        <span className="text-xs text-slate-500">
+                          Total Miles: {vTotal.toLocaleString()} • Business Use: <strong>{vPct.toFixed(1)}%</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVehicle(veh.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remove Vehicle
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Vehicle Make / Model</label>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        placeholder="e.g., Ford F-150 / Toyota Camry"
+                        value={veh.vehicle_model}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'vehicle_model', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Vehicle Year &amp; Type</label>
+                      <input
+                        type="text"
+                        disabled={readOnly}
+                        placeholder="e.g., 2023 Pickup Truck"
+                        value={veh.vehicle_type}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'vehicle_type', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Purchase Cost ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        disabled={readOnly}
+                        value={veh.vehicle_cost}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'vehicle_cost', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono disabled:bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Date Placed in Service</label>
+                      <input
+                        type="date"
+                        disabled={readOnly}
+                        value={veh.date_placed_in_service}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'date_placed_in_service', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                    <div className="text-xs font-bold text-slate-700 uppercase">
+                      {selectedYear} Mileage Breakdown (Vehicle Total: {vTotal.toLocaleString()} mi)
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Business Miles</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          disabled={readOnly}
+                          value={veh.business_miles}
+                          onChange={(e) => handleUpdateVehicle(veh.id, 'business_miles', e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono disabled:bg-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Commuting Miles</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          disabled={readOnly}
+                          value={veh.commuting_miles}
+                          onChange={(e) => handleUpdateVehicle(veh.id, 'commuting_miles', e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono disabled:bg-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Other / Personal Miles</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          disabled={readOnly}
+                          value={veh.other_miles}
+                          onChange={(e) => handleUpdateVehicle(veh.id, 'other_miles', e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono disabled:bg-slate-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 text-sm text-slate-700">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        disabled={readOnly}
+                        checked={Boolean(veh.available_off_duty)}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'available_off_duty', e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-600"
+                      />
+                      <span>Was this vehicle available for personal use during off-duty hours?</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        disabled={readOnly}
+                        checked={Boolean(veh.another_vehicle_available)}
+                        onChange={(e) =>
+                          handleUpdateVehicle(veh.id, 'another_vehicle_available', e.target.checked)
+                        }
+                        className="rounded border-slate-300 text-emerald-600"
+                      />
+                      <span>Do you (or your spouse) have another vehicle available for personal use?</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        disabled={readOnly}
+                        checked={Boolean(veh.has_written_evidence)}
+                        onChange={(e) => handleUpdateVehicle(veh.id, 'has_written_evidence', e.target.checked)}
+                        className="rounded border-slate-300 text-emerald-600"
+                      />
+                      <span>Do you have written evidence (mileage log / app) to support this vehicle&apos;s deduction?</span>
+                    </label>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {!readOnly && (worksheet.vehicles || []).length > 0 && (
+            <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={savingWorksheet}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: primaryColor }}
               >
                 <Save className="w-4 h-4" />
-                {savingWorksheet ? 'Saving...' : 'Save Vehicle Information'}
+                {savingWorksheet
+                  ? 'Saving Vehicles...'
+                  : `Save All Vehicles (${(worksheet.vehicles || []).length})`}
               </button>
             </div>
           )}
