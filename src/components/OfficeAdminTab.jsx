@@ -377,8 +377,15 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     if (memberSearch.trim()) {
       const q = memberSearch.trim().toLowerCase();
       const nameMatch = (m.full_name || '').toLowerCase().includes(q);
-      const emailMatch =
-      if (!isSuperAdmin && !isOfficeAdmin) {
+      const emailMatch = (m.email || '').toLowerCase().includes(q);
+      const officeMatch = (m.organizations?.brand_name || '').toLowerCase().includes(q);
+      if (!nameMatch && !emailMatch && !officeMatch) return false;
+    }
+
+    return true;
+  });
+
+  if (!isSuperAdmin && !isOfficeAdmin) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
         Access denied. Administrator privileges are required to view this section.
