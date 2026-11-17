@@ -6,7 +6,6 @@ export default function ChangePasswordModal({
   isOpen,
   onClose,
   primaryColor = '#059669',
-  isRecoveryMode = false,
   forceChange = false,
 }) {
   const [newPassword, setNewPassword] = useState('');
@@ -32,14 +31,13 @@ export default function ChangePasswordModal({
 
     setSaving(true);
     try {
-      // Update password AND clear the must_change_password metadata flag
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
         data: { must_change_password: false },
       });
       if (error) throw error;
 
-      setStatus({ type: 'success', text: 'Your new password is set! Unlocking your workspace...' });
+      setStatus({ type: 'success', text: 'Your password has been saved!' });
       setNewPassword('');
       setConfirmPassword('');
 
@@ -61,11 +59,7 @@ export default function ChangePasswordModal({
           <div className="flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-emerald-600" />
             <h3 className="text-base font-bold text-slate-900">
-              {forceChange
-                ? 'Create Your Permanent Password'
-                : isRecoveryMode
-                ? 'Set Your New Password'
-                : 'Change Account Password'}
+              {forceChange ? 'Create Your Own Password' : 'Change Account Password'}
             </h3>
           </div>
 
@@ -85,7 +79,7 @@ export default function ChangePasswordModal({
             <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
               <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
               <span>
-                Welcome! You signed in using a temporary password created by your administrator. Please choose a personal password before accessing your bookkeeping portal.
+                Welcome! You signed in using a temporary password. Please create your own personal password to unlock your bookkeeping portal.
               </span>
             </div>
           )}
@@ -130,7 +124,7 @@ export default function ChangePasswordModal({
               type="password"
               required
               minLength={6}
-              placeholder="Re-enter new password"
+              placeholder="Re-enter your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
