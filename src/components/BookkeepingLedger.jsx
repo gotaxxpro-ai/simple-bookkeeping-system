@@ -4,17 +4,62 @@ import {
   Trash2,
   Download,
   FileSpreadsheet,
-  ListFilter,
   TrendingUp,
   TrendingDown,
   DollarSign,
   CheckCircle2,
   AlertCircle,
   Calendar,
-  Search,
+  Car,
+  Package,
+  Home,
+  Wallet,
+  CheckSquare,
+  Save,
   Eye,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+const DEFAULT_WORKSHEET = {
+  business_name: '',
+  business_activity: '',
+  naics_code: '',
+  vehicle_model: '',
+  vehicle_type: '',
+  vehicle_cost: 0,
+  date_placed_in_service: '',
+  business_miles: 0,
+  commuting_miles: 0,
+  other_miles: 0,
+  available_off_duty: false,
+  another_vehicle_available: true,
+  has_written_evidence: true,
+  cogs_beginning_inventory: 0,
+  cogs_purchases: 0,
+  cogs_personal_withdrawals: 0,
+  cogs_labor: 0,
+  cogs_materials_supplies: 0,
+  cogs_other_costs: 0,
+  cogs_ending_inventory: 0,
+  home_office_method: 'simplified',
+  home_total_sqft: 0,
+  home_office_sqft: 0,
+  home_mortgage_or_rent: 0,
+  home_utilities: 0,
+  home_insurance: 0,
+  home_repairs: 0,
+  next_steps_completed: {},
+};
+
+const NEXT_STEPS_LIST = [
+  { id: 'profile', title: 'Complete Business Profile & NAICS Code', desc: 'Enter your legal business name, business activity, and 6-digit NAICS code.' },
+  { id: 'income', title: 'Record All Gross Income & 1099s', desc: 'Log all client payments, Stripe/Square payouts, and 1099-NEC/1099-K income.' },
+  { id: 'expenses', title: 'Categorize Operating Expenses', desc: 'Match every bank and business card charge to an IRS Schedule C expense line.' },
+  { id: 'vehicle', title: 'Log Business Mileage & Vehicle Details', desc: 'Enter business, commuting, and personal miles plus date placed in service.' },
+  { id: 'cogs_home', title: 'Review Cost of Goods Sold & Home Office', desc: 'Update inventory totals (if selling products) and home office square footage.' },
+  { id: 'draws', title: 'Verify Owner’s Draws', desc: 'Ensure personal transfers are logged under Owner’s Draw and excluded from expenses.' },
+  { id: 'export', title: 'Export Schedule C Report for Tax Preparer', desc: 'Download your Schedule C CSV summary or notify your tax office for review.' },
+];
 
 export default function BookkeepingLedger({
   targetUserId,
@@ -24,34 +69,30 @@ export default function BookkeepingLedger({
 }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [activeSubTab, setActiveSubTab] = useState('ledger'); // 'ledger' | 'schedule_c'
+  const [activeTab, setActiveTab] = useState('income');
+  // Tabs: 'income' | 'expenses' | 'vehicle' | 'cogs' | 'home_office' | 'owners_draw' | 'schedule_c'
 
   // Database state
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [worksheet, setWorksheet] = useState(DEFAULT_WORKSHEET);
   const [loading, setLoading] = useState(true);
+  const [savingWorksheet, setSavingWorksheet] = useState(false);
 
-  // Filters
-  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'income' | 'expense'
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Add transaction form state
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({
+  // Transaction entry form state (used on Income, Expenses, and Owner's Draw tabs)
+  const [txForm, setTxForm] = useState({
     transaction_date: new Date().toISOString().split('T')[0],
-    type: 'expense',
     category_id: '',
     amount: '',
     vendor_or_client: '',
     description: '',
     payment_method: 'Bank / Card',
   });
+  const [savingTx, setSavingTx] = useState(false);
 
   // Feedback banner
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Build selectable year options (current year + past 4 years)
   const yearOptions = useMemo(() => {
     const years = [];
     for (let y = currentYear; y >= currentYear - 4; y--) {
@@ -60,10 +101,9 @@ export default function BookkeepingLedger({
     return years;
   }, [currentYear]);
 
-  // 1. Fetch master IRS Schedule C categories once
+  // 1. Load Schedule C categories
   useEffect(() => {
     let isMounted = true;
-
     async function loadCategories() {
       const { data, error } = await supabase
         .from('schedule_c_categories')
@@ -73,135 +113,158 @@ export default function BookkeepingLedger({
 
       if (!error && data && isMounted) {
         setCategories(data);
-        const defaultExpense = data.find((c) => c.type === 'expense');
-        if (defaultExpense) {
-          setFormData((prev) => ({ ...prev, category_id: defaultExpense.id }));
-        }
       }
     }
-
     loadCategories();
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // 2. Fetch transactions for targetUserId and selectedYear
+  // Update default category when switching between Income and Expenses tabs
+  useEffect(() => {
+    if (activeTab === 'income') {
+      const firstInc = categories.find((c) => c.type === 'income');
+      setTxForm((prev) => ({ ...prev, category_id: firstInc ? firstInc.id : '' }));
+    } else if (activeTab === 'expenses') {
+      const firstExp = categories.find((c) => c.type === 'expense');
+      setTxForm((prev) => ({ ...prev, category_id: firstExp ? firstExp.id : '' }));
+    } else if (activeTab === 'owners_draw') {
+      setTxForm((prev) => ({ ...prev, category_id: '' }));
+    }
+  }, [activeTab, categories]);
+
+  // 2. Load Transactions + Worksheet for targetUserId and selectedYear
   useEffect(() => {
     if (!targetUserId) return;
-    fetchTransactions();
+    loadYearData();
   }, [targetUserId, selectedYear]);
 
-  const fetchTransactions = async () => {
+  const loadYearData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('bookkeeping_transactions')
-        .select(`
-          id,
-          user_id,
-          category_id,
-          tax_year,
-          transaction_date,
-          type,
-          amount,
-          vendor_or_client,
-          description,
-          payment_method,
-          is_reconciled,
-          schedule_c_categories (
+      const [txRes, wsRes] = await Promise.all([
+        supabase
+          .from('bookkeeping_transactions')
+          .select(`
             id,
-            line_number,
-            name,
+            user_id,
+            category_id,
+            tax_year,
+            transaction_date,
             type,
-            deduction_rate,
-            sort_order
-          )
-        `)
-        .eq('user_id', targetUserId)
-        .eq('tax_year', selectedYear)
-        .order('transaction_date', { ascending: false });
+            amount,
+            vendor_or_client,
+            description,
+            payment_method,
+            schedule_c_categories (
+              id,
+              line_number,
+              name,
+              type,
+              deduction_rate,
+              sort_order
+            )
+          `)
+          .eq('user_id', targetUserId)
+          .eq('tax_year', selectedYear)
+          .order('transaction_date', { ascending: false }),
+        supabase
+          .from('schedule_c_worksheets')
+          .select('*')
+          .eq('user_id', targetUserId)
+          .eq('tax_year', selectedYear)
+          .maybeSingle(),
+      ]);
 
-      if (error) throw error;
-      setTransactions(data || []);
+      if (txRes.error) throw txRes.error;
+      setTransactions(txRes.data || []);
+
+      if (!wsRes.error && wsRes.data) {
+        setWorksheet({
+          ...DEFAULT_WORKSHEET,
+          ...wsRes.data,
+          date_placed_in_service: wsRes.data.date_placed_in_service || '',
+          next_steps_completed: wsRes.data.next_steps_completed || {},
+        });
+      } else {
+        setWorksheet(DEFAULT_WORKSHEET);
+      }
     } catch (err) {
-      setStatusMessage({ type: 'error', text: `Failed to load transactions: ${err.message}` });
+      setStatusMessage({ type: 'error', text: `Failed to load ${selectedYear} records: ${err.message}` });
     } finally {
       setLoading(false);
     }
   };
 
-  // Switch default category automatically when toggling Income vs Expense in form
-  const handleFormTypeChange = (newType) => {
-    const matchingCat = categories.find((c) => c.type === newType);
-    setFormData({
-      ...formData,
-      type: newType,
-      category_id: matchingCat ? matchingCat.id : '',
-    });
-  };
-
-  // Insert a new bookkeeping entry
-  const handleAddTransaction = async (e) => {
+  // Add Income, Expense, or Owner's Draw entry
+  const handleAddEntry = async (e, entryType) => {
     e.preventDefault();
     if (readOnly) return;
 
-    const numericAmount = parseFloat(formData.amount);
-    if (isNaN(numericAmount) || numericAmount < 0) {
-      setStatusMessage({ type: 'error', text: 'Please enter a valid positive dollar amount.' });
+    const numericAmount = parseFloat(txForm.amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      setStatusMessage({ type: 'error', text: 'Please enter a valid dollar amount greater than 0.' });
       return;
     }
 
-    setSaving(true);
+    setSavingTx(true);
     setStatusMessage(null);
 
     try {
-      const { error } = await supabase.from('bookkeeping_transactions').insert({
+      const payload = {
         user_id: targetUserId,
-        transaction_date: formData.transaction_date,
-        type: formData.type,
-        category_id: formData.category_id,
+        transaction_date: txForm.transaction_date,
+        type: entryType,
+        category_id: entryType === 'owners_draw' ? null : txForm.category_id,
         amount: numericAmount,
-        vendor_or_client: formData.vendor_or_client.trim(),
-        description: formData.description.trim() || null,
-        payment_method: formData.payment_method,
-      });
+        vendor_or_client:
+          txForm.vendor_or_client.trim() ||
+          (entryType === 'owners_draw' ? 'Owner Personal Draw' : 'Unspecified'),
+        description: txForm.description.trim() || null,
+        payment_method: txForm.payment_method,
+      };
 
+      const { error } = await supabase.from('bookkeeping_transactions').insert(payload);
       if (error) throw error;
 
-      const txYear = parseInt(formData.transaction_date.split('-')[0], 10);
+      const txYear = parseInt(txForm.transaction_date.split('-')[0], 10);
       if (txYear !== selectedYear) {
         setSelectedYear(txYear);
       } else {
-        await fetchTransactions();
+        await loadYearData();
       }
 
-      setFormData((prev) => ({
+      setTxForm((prev) => ({
         ...prev,
         amount: '',
         vendor_or_client: '',
         description: '',
       }));
-      setShowAddForm(false);
-      setStatusMessage({ type: 'success', text: 'Transaction recorded.' });
+      setStatusMessage({
+        type: 'success',
+        text: `${
+          entryType === 'income'
+            ? 'Income'
+            : entryType === 'owners_draw'
+            ? "Owner's Draw"
+            : 'Expense'
+        } saved.`,
+      });
     } catch (err) {
-      setStatusMessage({ type: 'error', text: `Could not save transaction: ${err.message}` });
+      setStatusMessage({ type: 'error', text: `Could not save entry: ${err.message}` });
     } finally {
-      setSaving(false);
+      setSavingTx(false);
     }
   };
 
-  // Delete a transaction
-  const handleDeleteTransaction = async (txId) => {
+  // Delete transaction
+  const handleDeleteEntry = async (txId) => {
     if (readOnly) return;
-    if (!window.confirm('Delete this ledger entry?')) return;
+    if (!window.confirm('Delete this entry?')) return;
 
     try {
-      const { error } = await supabase
-        .from('bookkeeping_transactions')
-        .delete()
-        .eq('id', txId);
-
+      const { error } = await supabase.from('bookkeeping_transactions').delete().eq('id', txId);
       if (error) throw error;
       setTransactions((prev) => prev.filter((t) => t.id !== txId));
       setStatusMessage({ type: 'success', text: 'Entry deleted.' });
@@ -210,43 +273,134 @@ export default function BookkeepingLedger({
     }
   };
 
-  // Filtered ledger rows
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (typeFilter !== 'all' && tx.type !== typeFilter) return false;
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
-        const vendorMatch = tx.vendor_or_client?.toLowerCase().includes(q);
-        const descMatch = tx.description?.toLowerCase().includes(q);
-        const catMatch = tx.schedule_c_categories?.name?.toLowerCase().includes(q);
-        const lineMatch = tx.schedule_c_categories?.line_number?.toLowerCase().includes(q);
-        return vendorMatch || descMatch || catMatch || lineMatch;
-      }
-      return true;
-    });
-  }, [transactions, typeFilter, searchTerm]);
+  // Save Vehicle, COGS, Home Office, Business Profile, or Next Steps to schedule_c_worksheets
+  const handleSaveWorksheet = async (e, customNextSteps = null) => {
+    if (e) e.preventDefault();
+    if (readOnly) return;
 
-  // Schedule C Rollup Calculations (Part I Income, Part II Expenses with Deduction Rates, Net Profit)
-  const scheduleCSummary = useMemo(() => {
-    let grossIncome = 0;
+    setSavingWorksheet(true);
+    setStatusMessage(null);
+
+    try {
+      const payload = {
+        user_id: targetUserId,
+        tax_year: selectedYear,
+        business_name: worksheet.business_name,
+        business_activity: worksheet.business_activity,
+        naics_code: worksheet.naics_code,
+        vehicle_model: worksheet.vehicle_model,
+        vehicle_type: worksheet.vehicle_type,
+        vehicle_cost: Number(worksheet.vehicle_cost) || 0,
+        date_placed_in_service: worksheet.date_placed_in_service || null,
+        business_miles: Number(worksheet.business_miles) || 0,
+        commuting_miles: Number(worksheet.commuting_miles) || 0,
+        other_miles: Number(worksheet.other_miles) || 0,
+        available_off_duty: Boolean(worksheet.available_off_duty),
+        another_vehicle_available: Boolean(worksheet.another_vehicle_available),
+        has_written_evidence: Boolean(worksheet.has_written_evidence),
+        cogs_beginning_inventory: Number(worksheet.cogs_beginning_inventory) || 0,
+        cogs_purchases: Number(worksheet.cogs_purchases) || 0,
+        cogs_personal_withdrawals: Number(worksheet.cogs_personal_withdrawals) || 0,
+        cogs_labor: Number(worksheet.cogs_labor) || 0,
+        cogs_materials_supplies: Number(worksheet.cogs_materials_supplies) || 0,
+        cogs_other_costs: Number(worksheet.cogs_other_costs) || 0,
+        cogs_ending_inventory: Number(worksheet.cogs_ending_inventory) || 0,
+        home_office_method: worksheet.home_office_method,
+        home_total_sqft: Number(worksheet.home_total_sqft) || 0,
+        home_office_sqft: Number(worksheet.home_office_sqft) || 0,
+        home_mortgage_or_rent: Number(worksheet.home_mortgage_or_rent) || 0,
+        home_utilities: Number(worksheet.home_utilities) || 0,
+        home_insurance: Number(worksheet.home_insurance) || 0,
+        home_repairs: Number(worksheet.home_repairs) || 0,
+        next_steps_completed: customNextSteps || worksheet.next_steps_completed || {},
+      };
+
+      const { error } = await supabase
+        .from('schedule_c_worksheets')
+        .upsert(payload, { onConflict: 'user_id,tax_year' });
+
+      if (error) throw error;
+      if (!customNextSteps) {
+        setStatusMessage({ type: 'success', text: `${selectedYear} worksheet details saved.` });
+      }
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: `Save failed: ${err.message}` });
+    } finally {
+      setSavingWorksheet(false);
+    }
+  };
+
+  // Toggle Next Steps checkbox and persist immediately
+  const handleToggleNextStep = async (stepId) => {
+    if (readOnly) return;
+    const updatedSteps = {
+      ...(worksheet.next_steps_completed || {}),
+      [stepId]: !worksheet.next_steps_completed?.[stepId],
+    };
+    setWorksheet((prev) => ({ ...prev, next_steps_completed: updatedSteps }));
+    await handleSaveWorksheet(null, updatedSteps);
+  };
+
+  // Computed totals across all 7 modules
+  const calculations = useMemo(() => {
+    // 1. COGS Calculation (Schedule C Part III)
+    const netPurchases =
+      (Number(worksheet.cogs_purchases) || 0) - (Number(worksheet.cogs_personal_withdrawals) || 0);
+    const totalGoodsAvailable =
+      (Number(worksheet.cogs_beginning_inventory) || 0) +
+      netPurchases +
+      (Number(worksheet.cogs_labor) || 0) +
+      (Number(worksheet.cogs_materials_supplies) || 0) +
+      (Number(worksheet.cogs_other_costs) || 0);
+    const totalCogs = Math.max(0, totalGoodsAvailable - (Number(worksheet.cogs_ending_inventory) || 0));
+
+    // 2. Vehicle Mileage Summary (Part IV)
+    const bizMiles = Number(worksheet.business_miles) || 0;
+    const commMiles = Number(worksheet.commuting_miles) || 0;
+    const otherMiles = Number(worksheet.other_miles) || 0;
+    const totalMiles = bizMiles + commMiles + otherMiles;
+    const businessUsePct = totalMiles > 0 ? (bizMiles / totalMiles) * 100 : 0;
+
+    // 3. Home Office Deduction (Line 30)
+    const officeSqft = Number(worksheet.home_office_sqft) || 0;
+    const totalHomeSqft = Number(worksheet.home_total_sqft) || 0;
+    let homeOfficeDeduction = 0;
+    let homeBusinessPct = 0;
+
+    if (worksheet.home_office_method === 'simplified') {
+      const cappedSqft = Math.min(officeSqft, 300);
+      homeOfficeDeduction = cappedSqft * 5;
+      homeBusinessPct = totalHomeSqft > 0 ? (cappedSqft / totalHomeSqft) * 100 : 0;
+    } else {
+      homeBusinessPct = totalHomeSqft > 0 ? (officeSqft / totalHomeSqft) * 100 : 0;
+      const totalHomeExpenses =
+        (Number(worksheet.home_mortgage_or_rent) || 0) +
+        (Number(worksheet.home_utilities) || 0) +
+        (Number(worksheet.home_insurance) || 0) +
+        (Number(worksheet.home_repairs) || 0);
+      homeOfficeDeduction = totalHomeExpenses * (homeBusinessPct / 100);
+    }
+
+    // 4. Ledger Rollup (Income, Expenses, Owner's Draw)
+    let grossReceipts = 0;
     let returnsAndAllowances = 0;
     let totalGrossExpenses = 0;
     let totalDeductibleExpenses = 0;
+    let totalOwnersDraw = 0;
 
     const lineMap = new Map();
-
-    // Pre-populate active categories so tax preparers see zeroed lines or active lines cleanly
     categories.forEach((cat) => {
-      lineMap.set(cat.id, {
-        ...cat,
-        grossTotal: 0,
-        deductibleTotal: 0,
-        txCount: 0,
-      });
+      lineMap.set(cat.id, { ...cat, grossTotal: 0, deductibleTotal: 0, txCount: 0 });
     });
 
     transactions.forEach((tx) => {
       const amt = Number(tx.amount) || 0;
+
+      if (tx.type === 'owners_draw') {
+        totalOwnersDraw += amt;
+        return;
+      }
+
       const cat = tx.schedule_c_categories;
       if (!cat) return;
 
@@ -256,7 +410,6 @@ export default function BookkeepingLedger({
         deductibleTotal: 0,
         txCount: 0,
       };
-
       existing.grossTotal += amt;
       existing.txCount += 1;
 
@@ -264,44 +417,57 @@ export default function BookkeepingLedger({
         if (cat.line_number === 'Line 2') {
           returnsAndAllowances += amt;
         } else {
-          grossIncome += amt;
+          grossReceipts += amt;
         }
-      } else {
+      } else if (tx.type === 'expense') {
         const rate = Number(cat.deduction_rate ?? 100) / 100;
-        const deductibleAmt = amt * rate;
-        existing.deductibleTotal += deductibleAmt;
+        const ded = amt * rate;
+        existing.deductibleTotal += ded;
         totalGrossExpenses += amt;
-        totalDeductibleExpenses += deductibleAmt;
+        totalDeductibleExpenses += ded;
       }
 
       lineMap.set(cat.id, existing);
     });
 
-    const netIncome = grossIncome - returnsAndAllowances;
-    const netProfit = netIncome - totalDeductibleExpenses;
+    const netSales = grossReceipts - returnsAndAllowances;
+    const grossProfit = netSales - totalCogs;
+    const netProfit = grossProfit - totalDeductibleExpenses - homeOfficeDeduction;
 
     const allLines = Array.from(lineMap.values()).sort((a, b) => a.sort_order - b.sort_order);
-    const incomeLines = allLines.filter((l) => l.type === 'income');
-    const expenseLines = allLines.filter((l) => l.type === 'expense');
 
     return {
-      grossIncome,
+      grossReceipts,
       returnsAndAllowances,
-      netIncome,
+      netSales,
+      totalCogs,
+      grossProfit,
       totalGrossExpenses,
       totalDeductibleExpenses,
+      homeOfficeDeduction,
+      homeBusinessPct,
       netProfit,
-      incomeLines,
-      expenseLines,
+      totalOwnersDraw,
+      totalMiles,
+      businessUsePct,
+      incomeLines: allLines.filter((l) => l.type === 'income'),
+      expenseLines: allLines.filter((l) => l.type === 'expense'),
     };
-  }, [transactions, categories]);
+  }, [transactions, categories, worksheet]);
 
-  // Export Schedule C CSV for Tax Preparer
-  const handleExportScheduleCCsv = () => {
+  const formatCurrency = (val) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+
+  // Export Complete Schedule C + Worksheets CSV
+  const handleExportCsv = () => {
     const rows = [
-      ['Tax Year', 'Part', 'Schedule C Line', 'Category', 'Transactions', 'Gross Amount', 'Deduction Rate', 'Allowable Amount'],
-      ...scheduleCSummary.incomeLines.map((l) => [
-        selectedYear,
+      ['Tax Year', selectedYear],
+      ['Business Name', `"${worksheet.business_name || ''}"`],
+      ['Business Activity', `"${worksheet.business_activity || ''}"`],
+      ['NAICS Code', `"${worksheet.naics_code || ''}"`],
+      [],
+      ['Section', 'IRS Line', 'Description', 'Transactions', 'Gross Amount', 'Deduction Rate', 'Allowable Amount'],
+      ...calculations.incomeLines.map((l) => [
         'Part I - Income',
         l.line_number,
         `"${l.name}"`,
@@ -310,8 +476,9 @@ export default function BookkeepingLedger({
         '100%',
         l.grossTotal.toFixed(2),
       ]),
-      ...scheduleCSummary.expenseLines.map((l) => [
-        selectedYear,
+      ['Part III - COGS', 'Line 4', 'Cost of Goods Sold', '', calculations.totalCogs.toFixed(2), '100%', calculations.totalCogs.toFixed(2)],
+      ['Part I Summary', 'Line 7', 'Gross Profit', '', '', '', calculations.grossProfit.toFixed(2)],
+      ...calculations.expenseLines.map((l) => [
         'Part II - Expenses',
         l.line_number,
         `"${l.name}"`,
@@ -320,47 +487,53 @@ export default function BookkeepingLedger({
         `${l.deduction_rate}%`,
         l.deductibleTotal.toFixed(2),
       ]),
+      ['Home Office', 'Line 30', `Business Use of Home (${worksheet.home_office_method})`, '', '', '', calculations.homeOfficeDeduction.toFixed(2)],
+      ['Net Profit', 'Line 31', 'Net Profit or (Loss)', '', '', '', calculations.netProfit.toFixed(2)],
       [],
-      ['Summary', '', '', 'Net Business Income (Part I)', '', '', '', scheduleCSummary.netIncome.toFixed(2)],
-      ['Summary', '', '', 'Total Deductible Expenses (Part II)', '', '', '', scheduleCSummary.totalDeductibleExpenses.toFixed(2)],
-      ['Summary', '', '', 'Estimated Net Profit / (Loss) (Line 31)', '', '', '', scheduleCSummary.netProfit.toFixed(2)],
+      ['Memo / Equity', 'Non-Deductible', 'Total Owner Draws', '', calculations.totalOwnersDraw.toFixed(2), '0%', '0.00'],
+      ['Part IV - Vehicle', 'Miles', `Business: ${worksheet.business_miles} | Commuting: ${worksheet.commuting_miles} | Other: ${worksheet.other_miles} (${calculations.businessUsePct.toFixed(1)}% Business)`, '', '', '', ''],
     ];
 
     const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((r) => r.join(',')).join('\n');
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    const safeLabel = targetUserName ? targetUserName.replace(/[^a-z0-9]/gi, '_') : 'Client';
-    link.setAttribute('download', `Schedule_C_${safeLabel}_${selectedYear}.csv`);
+    link.setAttribute('href', encodeURI(csvContent));
+    const safeName = (worksheet.business_name || targetUserName || 'Client').replace(/[^a-z0-9]/gi, '_');
+    link.setAttribute('download', `Schedule_C_Complete_${safeName}_${selectedYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const formatCurrency = (val) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const navTabs = [
+    { id: 'income', label: 'Income', icon: TrendingUp },
+    { id: 'expenses', label: 'Expenses', icon: TrendingDown },
+    { id: 'vehicle', label: 'Vehicle Info', icon: Car },
+    { id: 'cogs', label: 'Cost of Goods Sold', icon: Package },
+    { id: 'home_office', label: 'Home Office', icon: Home },
+    { id: 'owners_draw', label: "Owner's Draw", icon: Wallet },
+    { id: 'schedule_c', label: 'Schedule C & Next Steps', icon: FileSpreadsheet },
+  ];
 
-  const availableFormCategories = categories.filter((c) => c.type === formData.type);
+  const incomeRows = transactions.filter((t) => t.type === 'income');
+  const expenseRows = transactions.filter((t) => t.type === 'expense');
+  const drawRows = transactions.filter((t) => t.type === 'owners_draw');
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Read-Only Tax Preparer Banner */}
+      {/* Read-Only Banner for Tax Preparer */}
       {readOnly && (
-        <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900">
-          <div className="flex items-center gap-2.5 text-sm font-medium">
-            <Eye className="w-5 h-5 text-blue-600 shrink-0" />
-            <span>
-              Tax Preparer Inspection Mode: Viewing{' '}
-              <strong>{targetUserName || 'Client'}</strong>&apos;s {selectedYear} Ledger (Read-Only)
-            </span>
-          </div>
+        <div className="flex items-center gap-2.5 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-sm font-medium">
+          <Eye className="w-5 h-5 text-blue-600 shrink-0" />
+          <span>
+            Tax Preparer Inspection Mode: Reviewing <strong>{targetUserName || 'Client'}</strong>&apos;s {selectedYear} Bookkeeping & Schedule C Worksheets (Read-Only)
+          </span>
         </div>
       )}
 
-      {/* Feedback Banner */}
+      {/* Status Alert */}
       {statusMessage && (
         <div
-          className={`flex items-center gap-3 p-3.5 rounded-xl border text-sm ${
+          className={`flex items-center gap-2.5 p-3.5 rounded-xl border text-sm ${
             statusMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-red-50 border-red-200 text-red-800'
@@ -375,16 +548,16 @@ export default function BookkeepingLedger({
         </div>
       )}
 
-      {/* Top Controls: Tax Year Selector, View Switcher, & Actions */}
+      {/* Top Bar: Tax Year Selector + Export */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <label htmlFor="tax-year-select" className="text-xs font-semibold text-slate-600">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-slate-100 px-3.5 py-2 rounded-xl border border-slate-200">
+            <Calendar className="w-4 h-4 text-slate-600" />
+            <label htmlFor="year-picker" className="text-xs font-semibold text-slate-600">
               Tax Year:
             </label>
             <select
-              id="tax-year-select"
+              id="year-picker"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="bg-transparent text-sm font-bold text-slate-900 focus:outline-none cursor-pointer"
@@ -397,338 +570,883 @@ export default function BookkeepingLedger({
             </select>
           </div>
 
-          <div className="inline-flex rounded-lg bg-slate-100 p-1 border border-slate-200">
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('ledger')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                activeSubTab === 'ledger'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <ListFilter className="w-3.5 h-3.5" />
-              Transaction Ledger
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('schedule_c')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                activeSubTab === 'schedule_c'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              Schedule C Report
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleExportScheduleCCsv}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg border border-slate-300"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export Schedule C CSV
-          </button>
-
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                setActiveSubTab('ledger');
-                setShowAddForm((prev) => !prev);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-lg shadow-sm"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <Plus className="w-4 h-4" />
-              {showAddForm ? 'Close Form' : 'Add Entry'}
-            </button>
+          {worksheet.business_name && (
+            <span className="hidden md:inline-block text-sm font-semibold text-slate-700">
+              {worksheet.business_name}
+            </span>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm"
+        >
+          <Download className="w-4 h-4" />
+          Export Complete {selectedYear} Schedule C CSV
+        </button>
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase">
-            <span>Net Business Income ({selectedYear})</span>
-            <TrendingUp className="w-4 h-4 text-emerald-600" />
+      {/* KPI Summary Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Net Sales (Part I)</div>
+          <div className="mt-1.5 text-xl font-bold text-slate-900">
+            {formatCurrency(calculations.netSales)}
           </div>
-          <div className="mt-2 text-2xl font-bold text-slate-900">
-            {formatCurrency(scheduleCSummary.netIncome)}
+          <div className="mt-1 text-[11px] text-slate-500">
+            After COGS ({formatCurrency(calculations.totalCogs)}): {formatCurrency(calculations.grossProfit)}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Schedule C Part I (Lines 1–7)</p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase">
-            <span>Deductible Expenses ({selectedYear})</span>
-            <TrendingDown className="w-4 h-4 text-amber-600" />
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Deductible Expenses</div>
+          <div className="mt-1.5 text-xl font-bold text-slate-900">
+            {formatCurrency(calculations.totalDeductibleExpenses + calculations.homeOfficeDeduction)}
           </div>
-          <div className="mt-2 text-2xl font-bold text-slate-900">
-            {formatCurrency(scheduleCSummary.totalDeductibleExpenses)}
+          <div className="mt-1 text-[11px] text-slate-500">
+            Includes Home Office: {formatCurrency(calculations.homeOfficeDeduction)}
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Gross Spend: {formatCurrency(scheduleCSummary.totalGrossExpenses)}
-          </p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase">
-            <span>Est. Net Profit / Loss (Line 31)</span>
-            <DollarSign className="w-4 h-4 text-slate-700" />
-          </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Est. Net Profit (Line 31)</div>
           <div
-            className={`mt-2 text-2xl font-bold ${
-              scheduleCSummary.netProfit >= 0 ? 'text-emerald-700' : 'text-red-600'
+            className={`mt-1.5 text-xl font-bold ${
+              calculations.netProfit >= 0 ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
-            {formatCurrency(scheduleCSummary.netProfit)}
+            {formatCurrency(calculations.netProfit)}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Taxable Schedule C Net Earnings</p>
+          <div className="mt-1 text-[11px] text-slate-500">Schedule C Taxable Net</div>
+        </div>
+
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Owner&apos;s Draw (YTD)</div>
+          <div className="mt-1.5 text-xl font-bold text-blue-700">
+            {formatCurrency(calculations.totalOwnersDraw)}
+          </div>
+          <div className="mt-1 text-[11px] text-slate-500">Non-deductible personal draw</div>
         </div>
       </div>
 
-      {/* Add Transaction Form */}
-      {!readOnly && showAddForm && (
+      {/* 7-Module Navigation Tabs */}
+      <div className="flex overflow-x-auto gap-1.5 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+        {navTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                isActive
+                  ? 'text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+              style={isActive ? { backgroundColor: primaryColor } : undefined}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ===================================================================== */}
+      {/* TAB 1 & 2: INCOME AND EXPENSES ENTRY + LEDGER                         */}
+      {/* ===================================================================== */}
+      {(activeTab === 'income' || activeTab === 'expenses') && (
+        <div className="space-y-6">
+          {!readOnly && (
+            <form
+              onSubmit={(e) => handleAddEntry(e, activeTab === 'income' ? 'income' : 'expense')}
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+            >
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                {activeTab === 'income' ? 'Enter Business Income' : 'Enter Business Expense'}
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={txForm.transaction_date}
+                    onChange={(e) => setTxForm({ ...txForm, transaction_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {activeTab === 'income' ? 'Client / Payer *' : 'Vendor / Merchant *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={activeTab === 'income' ? 'Client Name / Stripe' : 'Vendor Name'}
+                    value={txForm.vendor_or_client}
+                    onChange={(e) => setTxForm({ ...txForm, vendor_or_client: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Schedule C Category *
+                  </label>
+                  <select
+                    required
+                    value={txForm.category_id}
+                    onChange={(e) => setTxForm({ ...txForm, category_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                  >
+                    {categories
+                      .filter((c) => c.type === (activeTab === 'income' ? 'income' : 'expense'))
+                      .map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.line_number} — {cat.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Amount ($) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    placeholder="0.00"
+                    value={txForm.amount}
+                    onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Notes / Business Purpose
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Invoice #, project description, or receipt note"
+                    value={txForm.description}
+                    onChange={(e) => setTxForm({ ...txForm, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={savingTx}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {savingTx ? 'Saving...' : activeTab === 'income' ? 'Add Income' : 'Add Expense'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* Filtered Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">
+                {selectedYear} {activeTab === 'income' ? 'Income Ledger' : 'Expense Ledger'}
+              </h3>
+              <span className="text-sm font-bold text-slate-900">
+                Total:{' '}
+                {formatCurrency(
+                  activeTab === 'income'
+                    ? calculations.grossReceipts
+                    : calculations.totalGrossExpenses
+                )}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
+                    <th className="py-3 px-6">Date</th>
+                    <th className="py-3 px-6">{activeTab === 'income' ? 'Client' : 'Vendor'}</th>
+                    <th className="py-3 px-6">Schedule C Line</th>
+                    <th className="py-3 px-6 text-right">Amount</th>
+                    {!readOnly && <th className="py-3 px-6 text-right">Delete</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={readOnly ? 4 : 5} className="py-8 text-center text-slate-500">
+                        Loading entries...
+                      </td>
+                    </tr>
+                  ) : (activeTab === 'income' ? incomeRows : expenseRows).length === 0 ? (
+                    <tr>
+                      <td colSpan={readOnly ? 4 : 5} className="py-8 text-center text-slate-500">
+                        No {activeTab} entries recorded for {selectedYear} yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    (activeTab === 'income' ? incomeRows : expenseRows).map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-50">
+                        <td className="py-3.5 px-6 font-mono text-xs text-slate-600">
+                          {tx.transaction_date}
+                        </td>
+                        <td className="py-3.5 px-6">
+                          <div className="font-medium text-slate-900">{tx.vendor_or_client}</div>
+                          {tx.description && (
+                            <div className="text-xs text-slate-500">{tx.description}</div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-6 text-xs">
+                          <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-medium">
+                            {tx.schedule_c_categories?.line_number}: {tx.schedule_c_categories?.name}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-6 text-right font-mono font-semibold">
+                          {formatCurrency(tx.amount)}
+                        </td>
+                        {!readOnly && (
+                          <td className="py-3.5 px-6 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEntry(tx.id)}
+                              className="text-slate-400 hover:text-red-600 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 3: VEHICLE INFORMATION (Schedule C Part IV)                       */}
+      {/* ===================================================================== */}
+      {activeTab === 'vehicle' && (
         <form
-          onSubmit={handleAddTransaction}
-          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+          onSubmit={handleSaveWorksheet}
+          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6"
         >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Record Income or Business Expense
-            </h3>
-            <div className="inline-flex rounded-lg bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => handleFormTypeChange('expense')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold ${
-                  formData.type === 'expense'
-                    ? 'bg-amber-600 text-white'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Expense
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFormTypeChange('income')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold ${
-                  formData.type === 'income'
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Income
-              </button>
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">
+                Vehicle Information — Schedule C Part IV ({selectedYear})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Required by the IRS when claiming standard mileage or actual vehicle expenses.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-semibold text-slate-500 uppercase">Business Use %</div>
+              <div className="text-xl font-bold text-emerald-700">
+                {calculations.businessUsePct.toFixed(1)}%
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Date *</label>
-              <input
-                type="date"
-                required
-                value={formData.transaction_date}
-                onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-              />
-            </div>
-
-            <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {formData.type === 'income' ? 'Client / Payer *' : 'Vendor / Merchant *'}
+                Vehicle Make / Model
               </label>
               <input
                 type="text"
-                required
-                placeholder={formData.type === 'income' ? 'Acme Corp' : 'Staples / Delta / Uber'}
-                value={formData.vendor_or_client}
-                onChange={(e) => setFormData({ ...formData, vendor_or_client: e.target.value })}
+                disabled={readOnly}
+                placeholder="e.g., Chevrolet / Ford"
+                value={worksheet.vehicle_model}
+                onChange={(e) => setWorksheet({ ...worksheet, vehicle_model: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Schedule C Category *
+                Vehicle Year & Type
               </label>
-              <select
-                required
-                value={formData.category_id}
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-              >
-                {availableFormCategories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.line_number} — {cat.name}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                disabled={readOnly}
+                placeholder="e.g., 2022 F-150 Truck"
+                value={worksheet.vehicle_type}
+                onChange={(e) => setWorksheet({ ...worksheet, vehicle_type: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Amount ($) *
+                Vehicle Purchase Cost ($)
               </label>
               <input
                 type="number"
                 step="0.01"
-                min="0"
-                required
-                placeholder="0.00"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                disabled={readOnly}
+                value={worksheet.vehicle_cost}
+                onChange={(e) => setWorksheet({ ...worksheet, vehicle_cost: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
-              />
-            </div>
-
-            <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Business Purpose / Memo (Audit Trail)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., Client lunch meeting, Q3 software subscription, Invoice #104"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Payment Method
+                Date Placed in Service
               </label>
-              <select
-                value={formData.payment_method}
-                onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-              >
-                <option value="Bank / Card">Business Bank / Card</option>
-                <option value="Cash">Cash</option>
-                <option value="Zelle / ACH">Zelle / ACH / Wire</option>
-                <option value="Check">Check</option>
-              </select>
+              <input
+                type="date"
+                disabled={readOnly}
+                value={worksheet.date_placed_in_service}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, date_placed_in_service: e.target.value })
+                }
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
             </div>
           </div>
 
-          <div className="pt-2 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAddForm(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2 text-white text-xs font-semibold rounded-lg shadow-sm disabled:opacity-50"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {saving ? 'Saving...' : 'Save Transaction'}
-            </button>
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 uppercase">
+              {selectedYear} Mileage Breakdown (Total Miles: {calculations.totalMiles.toLocaleString()})
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Business Miles
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  disabled={readOnly}
+                  value={worksheet.business_miles}
+                  onChange={(e) => setWorksheet({ ...worksheet, business_miles: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Commuting Miles
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  disabled={readOnly}
+                  value={worksheet.commuting_miles}
+                  onChange={(e) => setWorksheet({ ...worksheet, commuting_miles: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Other / Personal Miles
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  disabled={readOnly}
+                  value={worksheet.other_miles}
+                  onChange={(e) => setWorksheet({ ...worksheet, other_miles: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+            </div>
           </div>
+
+          <div className="space-y-3 text-sm text-slate-700">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={readOnly}
+                checked={worksheet.available_off_duty}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, available_off_duty: e.target.checked })
+                }
+                className="rounded border-slate-300 text-emerald-600"
+              />
+              <span>Was your vehicle available for personal use during off-duty hours?</span>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={readOnly}
+                checked={worksheet.another_vehicle_available}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, another_vehicle_available: e.target.checked })
+                }
+                className="rounded border-slate-300 text-emerald-600"
+              />
+              <span>Do you (or your spouse) have another vehicle available for personal use?</span>
+            </label>
+
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={readOnly}
+                checked={worksheet.has_written_evidence}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, has_written_evidence: e.target.checked })
+                }
+                className="rounded border-slate-300 text-emerald-600"
+              />
+              <span>Do you have written evidence (mileage log / app) to support your deduction?</span>
+            </label>
+          </div>
+
+          {!readOnly && (
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={savingWorksheet}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Save className="w-4 h-4" />
+                {savingWorksheet ? 'Saving...' : 'Save Vehicle Information'}
+              </button>
+            </div>
+          )}
         </form>
       )}
 
-      {/* VIEW 1: TRANSACTION LEDGER */}
-      {activeSubTab === 'ledger' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search vendor, memo, or Schedule C line..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-              />
+      {/* ===================================================================== */}
+      {/* TAB 4: COST OF GOODS SOLD (Schedule C Part III)                       */}
+      {/* ===================================================================== */}
+      {activeTab === 'cogs' && (
+        <form
+          onSubmit={handleSaveWorksheet}
+          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6"
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">
+                Cost of Goods Sold — Schedule C Part III ({selectedYear})
+              </h3>
+              <p className="text-xs text-slate-500">
+                For businesses that manufacture, wholesale, or retail physical inventory.
+              </p>
             </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              {['all', 'income', 'expense'].map((filterVal) => (
-                <button
-                  key={filterVal}
-                  type="button"
-                  onClick={() => setTypeFilter(filterVal)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold capitalize border ${
-                    typeFilter === filterVal
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                  }`}
-                >
-                  {filterVal}
-                </button>
-              ))}
+            <div className="text-right">
+              <div className="text-xs font-semibold text-slate-500 uppercase">Total COGS (Line 4)</div>
+              <div className="text-xl font-bold text-slate-900">
+                {formatCurrency(calculations.totalCogs)}
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Inventory at Beginning of Year ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_beginning_inventory}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, cogs_beginning_inventory: e.target.value })
+                }
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Purchases ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_purchases}
+                onChange={(e) => setWorksheet({ ...worksheet, cogs_purchases: e.target.value })}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Less: Cost of Items Withdrawn for Personal Use ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_personal_withdrawals}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, cogs_personal_withdrawals: e.target.value })
+                }
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Cost of Labor (Do not include amounts paid to yourself) ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_labor}
+                onChange={(e) => setWorksheet({ ...worksheet, cogs_labor: e.target.value })}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Materials and Supplies ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_materials_supplies}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, cogs_materials_supplies: e.target.value })
+                }
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Other Costs (Freight-in, Packaging) ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_other_costs}
+                onChange={(e) => setWorksheet({ ...worksheet, cogs_other_costs: e.target.value })}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Inventory at End of Year ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={readOnly}
+                value={worksheet.cogs_ending_inventory}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, cogs_ending_inventory: e.target.value })
+                }
+                className="w-full md:w-1/2 px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+          </div>
+
+          {!readOnly && (
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={savingWorksheet}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Save className="w-4 h-4" />
+                {savingWorksheet ? 'Saving...' : 'Save Cost of Goods Sold'}
+              </button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 5: HOME OFFICE (Schedule C Line 30 / Form 8829)                   */}
+      {/* ===================================================================== */}
+      {activeTab === 'home_office' && (
+        <form
+          onSubmit={handleSaveWorksheet}
+          className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6"
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-800">
+                Business Use of Home — Line 30 ({selectedYear})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Space used regularly and exclusively for your business.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-semibold text-slate-500 uppercase">
+                Calculated Deduction
+              </div>
+              <div className="text-xl font-bold text-emerald-700">
+                {formatCurrency(calculations.homeOfficeDeduction)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Calculation Method
+              </label>
+              <select
+                disabled={readOnly}
+                value={worksheet.home_office_method}
+                onChange={(e) =>
+                  setWorksheet({ ...worksheet, home_office_method: e.target.value })
+                }
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+              >
+                <option value="simplified">Simplified Option ($5 / sq ft, max 300 sq ft)</option>
+                <option value="regular">Actual Expenses (Form 8829 Percentage)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Business Office Area (Sq Ft)
+              </label>
+              <input
+                type="number"
+                disabled={readOnly}
+                value={worksheet.home_office_sqft}
+                onChange={(e) => setWorksheet({ ...worksheet, home_office_sqft: e.target.value })}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Total Home Area (Sq Ft)
+              </label>
+              <input
+                type="number"
+                disabled={readOnly}
+                value={worksheet.home_total_sqft}
+                onChange={(e) => setWorksheet({ ...worksheet, home_total_sqft: e.target.value })}
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+              />
+            </div>
+          </div>
+
+          {worksheet.home_office_method === 'regular' && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <div className="text-xs font-bold text-slate-700 uppercase">
+                Annual Home Expenses (Business Share: {calculations.homeBusinessPct.toFixed(1)}%)
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Mortgage Interest or Rent ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={readOnly}
+                    value={worksheet.home_mortgage_or_rent}
+                    onChange={(e) =>
+                      setWorksheet({ ...worksheet, home_mortgage_or_rent: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Home Utilities ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={readOnly}
+                    value={worksheet.home_utilities}
+                    onChange={(e) => setWorksheet({ ...worksheet, home_utilities: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Homeowners / Renters Ins. ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={readOnly}
+                    value={worksheet.home_insurance}
+                    onChange={(e) => setWorksheet({ ...worksheet, home_insurance: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Home Repairs & Maint. ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={readOnly}
+                    value={worksheet.home_repairs}
+                    onChange={(e) => setWorksheet({ ...worksheet, home_repairs: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!readOnly && (
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={savingWorksheet}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Save className="w-4 h-4" />
+                {savingWorksheet ? 'Saving...' : 'Save Home Office'}
+              </button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 6: OWNER'S DRAW (Personal Capital Withdrawals)                    */}
+      {/* ===================================================================== */}
+      {activeTab === 'owners_draw' && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs leading-relaxed">
+            <strong>IRS Tax Rule:</strong> Owner&apos;s Draws are personal transfers from your business bank account to yourself. They are tracked here so your bank balance reconciles, but they are <strong>not deductible</strong> and do not reduce your Schedule C Net Profit.
+          </div>
+
+          {!readOnly && (
+            <form
+              onSubmit={(e) => handleAddEntry(e, 'owners_draw')}
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+            >
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                Record Owner&apos;s Draw
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={txForm.transaction_date}
+                    onChange={(e) => setTxForm({ ...txForm, transaction_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Recipient / Account
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Owner Personal Transfer"
+                    value={txForm.vendor_or_client}
+                    onChange={(e) => setTxForm({ ...txForm, vendor_or_client: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Amount ($) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    placeholder="0.00"
+                    value={txForm.amount}
+                    onChange={(e) => setTxForm({ ...txForm, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={savingTx}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {savingTx ? 'Saving...' : 'Add Draw'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">
+                {selectedYear} Owner&apos;s Draws
+              </h3>
+              <span className="text-sm font-bold text-blue-700">
+                Total Withdrawn: {formatCurrency(calculations.totalOwnersDraw)}
+              </span>
+            </div>
+
+            <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
-                  <th className="py-3 px-5">Date</th>
-                  <th className="py-3 px-5">Vendor / Client</th>
-                  <th className="py-3 px-5">Schedule C Line</th>
-                  <th className="py-3 px-5 text-right">Amount</th>
-                  {!readOnly && <th className="py-3 px-5 text-right">Action</th>}
+                  <th className="py-3 px-6">Date</th>
+                  <th className="py-3 px-6">Description</th>
+                  <th className="py-3 px-6 text-right">Amount</th>
+                  {!readOnly && <th className="py-3 px-6 text-right">Delete</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
-                {loading ? (
+              <tbody className="divide-y divide-slate-200">
+                {drawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={readOnly ? 4 : 5} className="py-10 text-center text-slate-500">
-                      Loading {selectedYear} transactions...
-                    </td>
-                  </tr>
-                ) : filteredTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={readOnly ? 4 : 5} className="py-10 text-center text-slate-500">
-                      No transactions recorded for {selectedYear}.
+                    <td colSpan={readOnly ? 3 : 4} className="py-8 text-center text-slate-500">
+                      No owner&apos;s draws recorded for {selectedYear}.
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((tx) => (
+                  drawRows.map((tx) => (
                     <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="py-3.5 px-5 text-xs font-mono text-slate-600 whitespace-nowrap">
+                      <td className="py-3.5 px-6 font-mono text-xs text-slate-600">
                         {tx.transaction_date}
                       </td>
-                      <td className="py-3.5 px-5">
-                        <div className="font-medium text-slate-900">{tx.vendor_or_client}</div>
-                        {tx.description && (
-                          <div className="text-xs text-slate-500">{tx.description}</div>
-                        )}
+                      <td className="py-3.5 px-6 font-medium text-slate-900">
+                        {tx.vendor_or_client}
                       </td>
-                      <td className="py-3.5 px-5">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-800">
-                          {tx.schedule_c_categories?.line_number}: {tx.schedule_c_categories?.name}
-                        </span>
-                      </td>
-                      <td
-                        className={`py-3.5 px-5 text-right font-mono font-semibold whitespace-nowrap ${
-                          tx.type === 'income' ? 'text-emerald-700' : 'text-slate-900'
-                        }`}
-                      >
-                        {tx.type === 'income' ? '+' : '-'}
+                      <td className="py-3.5 px-6 text-right font-mono font-semibold text-blue-700">
                         {formatCurrency(tx.amount)}
                       </td>
                       {!readOnly && (
-                        <td className="py-3.5 px-5 text-right">
+                        <td className="py-3.5 px-6 text-right">
                           <button
                             type="button"
-                            onClick={() => handleDeleteTransaction(tx.id)}
+                            onClick={() => handleDeleteEntry(tx.id)}
                             className="text-slate-400 hover:text-red-600 p-1"
-                            title="Delete entry"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -743,86 +1461,199 @@ export default function BookkeepingLedger({
         </div>
       )}
 
-      {/* VIEW 2: IRS SCHEDULE C TAX SUMMARY REPORT */}
-      {activeSubTab === 'schedule_c' && (
+      {/* ===================================================================== */}
+      {/* TAB 7: SCHEDULE C REPORT & NEXT STEPS                                 */}
+      {/* ===================================================================== */}
+      {activeTab === 'schedule_c' && (
         <div className="space-y-6">
-          {/* Part I: Income */}
+          {/* Business Header Info (Schedule C Top Lines A, B, C) */}
+          <form
+            onSubmit={handleSaveWorksheet}
+            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                Schedule C Business Header Info
+              </h3>
+              {!readOnly && (
+                <button
+                  type="submit"
+                  disabled={savingWorksheet}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-white text-xs font-semibold rounded-lg"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  Save Business Info
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Business Name (Line C)
+                </label>
+                <input
+                  type="text"
+                  disabled={readOnly}
+                  placeholder="Legal Name or DBA"
+                  value={worksheet.business_name}
+                  onChange={(e) => setWorksheet({ ...worksheet, business_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Principal Business Activity (Line A)
+                </label>
+                <input
+                  type="text"
+                  disabled={readOnly}
+                  placeholder="e.g., Consulting, Trucking, E-Commerce"
+                  value={worksheet.business_activity}
+                  onChange={(e) =>
+                    setWorksheet({ ...worksheet, business_activity: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  6-Digit NAICS Code (Line B)
+                </label>
+                <input
+                  type="text"
+                  disabled={readOnly}
+                  placeholder="e.g., 541611"
+                  value={worksheet.naics_code}
+                  onChange={(e) => setWorksheet({ ...worksheet, naics_code: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+            </div>
+          </form>
+
+          {/* Complete Schedule C Summary Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-800">
-                Schedule C — Part I: Income ({selectedYear})
+                IRS Form 1040 Schedule C Summary ({selectedYear})
               </h3>
               <span className="text-sm font-bold text-emerald-700">
-                Net Income: {formatCurrency(scheduleCSummary.netIncome)}
+                Net Profit (Line 31): {formatCurrency(calculations.netProfit)}
               </span>
             </div>
+
             <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase bg-slate-50/50">
-                  <th className="py-2.5 px-6 w-28">IRS Line</th>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
+                  <th className="py-2.5 px-6 w-28">Line</th>
                   <th className="py-2.5 px-6">Category</th>
-                  <th className="py-2.5 px-6 text-center">Entries</th>
-                  <th className="py-2.5 px-6 text-right">Total</th>
+                  <th className="py-2.5 px-6 text-right">Gross</th>
+                  <th className="py-2.5 px-6 text-right">Allowable / Net</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {scheduleCSummary.incomeLines.map((line) => (
-                  <tr key={line.id} className={line.txCount > 0 ? 'bg-white' : 'bg-slate-50/40 text-slate-400'}>
-                    <td className="py-3 px-6 font-mono text-xs font-semibold">{line.line_number}</td>
-                    <td className="py-3 px-6 font-medium">{line.name}</td>
-                    <td className="py-3 px-6 text-center text-xs">{line.txCount}</td>
-                    <td className="py-3 px-6 text-right font-mono font-semibold">
-                      {formatCurrency(line.grossTotal)}
+                {calculations.incomeLines.map((l) => (
+                  <tr key={l.id}>
+                    <td className="py-2.5 px-6 font-mono text-xs font-semibold">{l.line_number}</td>
+                    <td className="py-2.5 px-6">{l.name}</td>
+                    <td className="py-2.5 px-6 text-right font-mono">{formatCurrency(l.grossTotal)}</td>
+                    <td className="py-2.5 px-6 text-right font-mono font-semibold text-emerald-700">
+                      {formatCurrency(l.grossTotal)}
                     </td>
                   </tr>
                 ))}
+                <tr className="bg-slate-50 font-semibold">
+                  <td className="py-2.5 px-6 font-mono text-xs">Line 4</td>
+                  <td className="py-2.5 px-6">Cost of Goods Sold (Part III)</td>
+                  <td className="py-2.5 px-6 text-right font-mono">{formatCurrency(calculations.totalCogs)}</td>
+                  <td className="py-2.5 px-6 text-right font-mono">-{formatCurrency(calculations.totalCogs)}</td>
+                </tr>
+                <tr className="bg-emerald-50/50 font-bold">
+                  <td className="py-2.5 px-6 font-mono text-xs">Line 7</td>
+                  <td className="py-2.5 px-6">Gross Profit</td>
+                  <td className="py-2.5 px-6 text-right">—</td>
+                  <td className="py-2.5 px-6 text-right font-mono">{formatCurrency(calculations.grossProfit)}</td>
+                </tr>
+
+                {calculations.expenseLines.map((l) => (
+                  <tr key={l.id} className={l.txCount === 0 ? 'text-slate-400' : ''}>
+                    <td className="py-2.5 px-6 font-mono text-xs font-semibold">{l.line_number}</td>
+                    <td className="py-2.5 px-6">
+                      {l.name}{' '}
+                      {Number(l.deduction_rate) < 100 && (
+                        <span className="text-xs text-amber-700">({l.deduction_rate}% limit)</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-6 text-right font-mono">{formatCurrency(l.grossTotal)}</td>
+                    <td className="py-2.5 px-6 text-right font-mono font-semibold">
+                      {formatCurrency(l.deductibleTotal)}
+                    </td>
+                  </tr>
+                ))}
+
+                <tr className="bg-slate-50 font-semibold">
+                  <td className="py-2.5 px-6 font-mono text-xs">Line 30</td>
+                  <td className="py-2.5 px-6">Expenses for Business Use of Home</td>
+                  <td className="py-2.5 px-6 text-right">—</td>
+                  <td className="py-2.5 px-6 text-right font-mono">
+                    {formatCurrency(calculations.homeOfficeDeduction)}
+                  </td>
+                </tr>
+
+                <tr className="bg-slate-900 text-white font-bold">
+                  <td className="py-3.5 px-6 font-mono text-xs">Line 31</td>
+                  <td className="py-3.5 px-6">Net Profit or (Loss)</td>
+                  <td className="py-3.5 px-6 text-right">—</td>
+                  <td className="py-3.5 px-6 text-right font-mono text-base">
+                    {formatCurrency(calculations.netProfit)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          {/* Part II: Expenses */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          {/* Next Steps Checklist */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-emerald-600" />
               <h3 className="text-base font-bold text-slate-800">
-                Schedule C — Part II: Business Expenses ({selectedYear})
+                Next Steps: {selectedYear} Tax Filing Readiness Checklist
               </h3>
-              <span className="text-sm font-bold text-slate-900">
-                Allowable Deductions: {formatCurrency(scheduleCSummary.totalDeductibleExpenses)}
-              </span>
             </div>
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase bg-slate-50/50">
-                  <th className="py-2.5 px-6 w-28">IRS Line</th>
-                  <th className="py-2.5 px-6">Expense Category</th>
-                  <th className="py-2.5 px-6 text-center">Entries</th>
-                  <th className="py-2.5 px-6 text-right">Gross Spend</th>
-                  <th className="py-2.5 px-6 text-right">Deductible</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {scheduleCSummary.expenseLines.map((line) => (
-                  <tr key={line.id} className={line.txCount > 0 ? 'bg-white' : 'bg-slate-50/40 text-slate-400'}>
-                    <td className="py-3 px-6 font-mono text-xs font-semibold">{line.line_number}</td>
-                    <td className="py-3 px-6">
-                      <div className="font-medium">{line.name}</div>
-                      {Number(line.deduction_rate) < 100 && (
-                        <span className="text-[11px] text-amber-700 font-medium">
-                          IRS {line.deduction_rate}% deduction limit applied
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-6 text-center text-xs">{line.txCount}</td>
-                    <td className="py-3 px-6 text-right font-mono text-slate-600">
-                      {formatCurrency(line.grossTotal)}
-                    </td>
-                    <td className="py-3 px-6 text-right font-mono font-semibold">
-                      {formatCurrency(line.deductibleTotal)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+            <div className="divide-y divide-slate-200">
+              {NEXT_STEPS_LIST.map((step) => {
+                const checked = Boolean(worksheet.next_steps_completed?.[step.id]);
+                return (
+                  <label
+                    key={step.id}
+                    className="py-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50 px-2 rounded-lg"
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={readOnly}
+                      checked={checked}
+                      onChange={() => handleToggleNextStep(step.id)}
+                      className="mt-1 rounded border-slate-300 text-emerald-600"
+                    />
+                    <div>
+                      <div
+                        className={`text-sm font-semibold ${
+                          checked ? 'line-through text-slate-400' : 'text-slate-900'
+                        }`}
+                      >
+                        {step.title}
+                      </div>
+                      <div className="text-xs text-slate-500">{step.desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
