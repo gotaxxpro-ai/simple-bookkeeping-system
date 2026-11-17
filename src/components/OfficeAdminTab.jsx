@@ -325,22 +325,32 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Toggle active/suspended status of an organization (super_admin)
-  const handleToggleOrgStatus = async (org) => {
+  // Toggle client active/suspended status via secure RPC
+  const handleToggleMemberStatus = async (member) => {
+    if (member.user_id === membership?.user_id) {
+      setStatusMessage({ type: 'error', text: 'You cannot suspend your own administrator account.' });
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ is_active: !org.is_active })
-        .eq('id', org.id);
+      const { data: newStatus, error } = await supabase.rpc('toggle_client_active_status', {
+        target_user_id: member.user_id,
+      });
 
       if (error) throw error;
-      fetchAllOrganizations();
+
+      // Update local state immediately and refresh directory
+      setMembers((prev) =>
+        prev.map((m) => (m.user_id === member.user_id ? { ...m, is_active: newStatus } : m))
+      );
       setStatusMessage({
         type: 'success',
-        text: `${org.brand_name} is now ${!org.is_active ? 'Active' : 'Suspended'}.`,
+        text: `Account for ${member.full_name || member.email} is now ${
+          newStatus ? 'Active' : 'Suspended'
+        }.`,
       });
     } catch (err) {
-      setStatusMessage({ type: 'error', text: `Failed to update status: ${err.message}` });
+      setStatusMessage({ type: 'error', text: `Failed to update user status: ${err.message}` });
     }
   };
 
