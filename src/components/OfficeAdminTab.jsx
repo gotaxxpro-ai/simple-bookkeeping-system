@@ -14,12 +14,18 @@ import {
   UserCheck,
   UserX,
   UserPlus,
+  BookOpen,
+  ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import BookkeepingLedger from './BookkeepingLedger';
 
 export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated }) {
   const isSuperAdmin = membership?.role === 'super_admin';
   const isOfficeAdmin = membership?.role === 'office_admin';
+
+  // Selected client for read-only Schedule C ledger inspection
+  const [inspectingClient, setInspectingClient] = useState(null);
 
   // Resolved organization for the active admin
   const [resolvedOrg, setResolvedOrg] = useState(null);
@@ -346,6 +352,36 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     );
   }
 
+  // READ-ONLY CLIENT SCHEDULE C LEDGER INSPECTION VIEW
+  if (inspectingClient) {
+    const clientLabel = inspectingClient.full_name || inspectingClient.email || 'Client';
+    return (
+      <div className="space-y-6 max-w-6xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-2xl border border-slate-200 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setInspectingClient(null)}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to {isSuperAdmin ? 'Platform & Office Admin' : 'Office Clients'}
+          </button>
+
+          <div className="text-xs text-slate-500">
+            Client Email: <span className="font-mono text-slate-700">{inspectingClient.email || '—'}</span>
+          </div>
+        </div>
+
+        <BookkeepingLedger
+          targetUserId={inspectingClient.user_id}
+          targetUserName={clientLabel}
+          readOnly={true}
+          primaryColor={resolvedOrg?.primary_color || currentOrg?.primary_color || '#059669'}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       {/* Status Banner */}
@@ -478,11 +514,11 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         </div>
       ) : (
         <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm">
-          Your administrator account is not linked to a specific organization yet. Contact your platform administrator to assign your `organization_id`.
+          Your administrator account is not linked to a specific organization yet. Contact your platform administrator to assign your <code>organization_id</code>.
         </div>
       )}
 
-      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY (With Direct Add Client Form) */}
+      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY (With View Books & Add Client) */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -602,7 +638,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                 <th className="py-3 px-6">Role</th>
                 <th className="py-3 px-6">Joined</th>
                 <th className="py-3 px-6">Status</th>
-                <th className="py-3 px-6 text-right">Access</th>
+                <th className="py-3 px-6 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
@@ -615,7 +651,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
               ) : members.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="py-8 text-center text-slate-500">
-                    No clients registered under this office yet. Click "Add Client" above or share your portal link.
+                    No clients registered under this office yet. Click &quot;Add Client&quot; above or share your portal link.
                   </td>
                 </tr>
               ) : (
@@ -667,15 +703,26 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                       </span>
                     </td>
                     <td className="py-3.5 px-6 text-right">
-                      {member.user_id !== membership?.user_id && member.role !== 'super_admin' && (
+                      <div className="inline-flex items-center justify-end gap-3">
                         <button
                           type="button"
-                          onClick={() => handleToggleMemberStatus(member)}
-                          className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
+                          onClick={() => setInspectingClient(member)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200"
                         >
-                          {member.is_active ? 'Suspend' : 'Activate'}
+                          <BookOpen className="w-3.5 h-3.5" />
+                          View Books
                         </button>
-                      )}
+
+                        {member.user_id !== membership?.user_id && member.role !== 'super_admin' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMemberStatus(member)}
+                            className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
+                          >
+                            {member.is_active ? 'Suspend' : 'Activate'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
