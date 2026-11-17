@@ -217,6 +217,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     e.preventDefault();
     setCreatingOffice(true);
     setStatusMessage(null);
+
     try {
       const { data, error } = await supabase.functions.invoke('create-tax-office', {
         body: {
@@ -229,7 +230,27 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           admin_password: newOffice.admin_password,
         },
       });
-      if (error) throw new Error(error.message);
+
+      if (error) {
+        // Extract detailed JSON error body from Supabase Edge Function response if present
+        let detailedMsg = error.message;
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const errBody = await error.context.json();
+            if (errBody?.error) detailedMsg = errBody.error;
+          }
+        } catch (_) {
+          // Ignore JSON parse fallback
+        }
+
+        if (detailedMsg.includes('Failed to send a request')) {
+          throw new Error(
+            'Edge Function "create-tax-office" is not reachable. Deploy it in Supabase Edge Functions first.'
+          );
+        }
+        throw new Error(detailedMsg);
+      }
+
       if (data?.error) throw new Error(data.error);
 
       setStatusMessage({
@@ -237,16 +258,22 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         text: `Tax office "${data.organization.brand_name}" and admin login (${data.admin_user.email}) created!`,
       });
       setNewOffice({
-        slug: '', brand_name: '', tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
-        primary_color: '#059669', support_email: '', admin_email: '', admin_password: '',
+        slug: '',
+        brand_name: '',
+        tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
+        primary_color: '#059669',
+        support_email: '',
+        admin_email: '',
+        admin_password: '',
       });
       setShowNewOfficeForm(false);
       fetchAllOrganizations();
       fetchMembers();
     } catch (err) {
-      setStatusMessage({ type: 'error', text: err.message });
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to create tax office.' });
     } finally {
       setCreatingOffice(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
