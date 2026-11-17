@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Building2, Plus, Save, CheckCircle2, AlertCircle, Globe, Palette,
-  Mail, ShieldCheck, ExternalLink, Users, UserCheck, UserX, UserPlus,
-  BookOpen, ArrowLeft, Search,
+  Building2,
+  Plus,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Globe,
+  Palette,
+  Mail,
+  ShieldCheck,
+  ExternalLink,
+  Users,
+  UserCheck,
+  UserX,
+  UserPlus,
+  BookOpen,
+  ArrowLeft,
+  Search,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import BookkeepingLedger from './BookkeepingLedger';
@@ -158,7 +172,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-const handleCreateClient = async (e) => {
+  const handleCreateClient = async (e) => {
     e.preventDefault();
     setCreatingClient(true);
     setStatusMessage(null);
@@ -192,7 +206,7 @@ const handleCreateClient = async (e) => {
             if (errBody?.error) detailedMsg = errBody.error;
           }
         } catch (_) {
-          // Fall back to generic error message if body isn't JSON
+          // Fall back to generic message if response is not JSON
         }
         throw new Error(detailedMsg);
       }
@@ -363,14 +377,8 @@ const handleCreateClient = async (e) => {
     if (memberSearch.trim()) {
       const q = memberSearch.trim().toLowerCase();
       const nameMatch = (m.full_name || '').toLowerCase().includes(q);
-      const emailMatch = (m.email || '').toLowerCase().includes(q);
-      const officeMatch = (m.organizations?.brand_name || '').toLowerCase().includes(q);
-      if (!nameMatch && !emailMatch && !officeMatch) return false;
-    }
-
-    return true;
-  });
-  if (!isSuperAdmin && !isOfficeAdmin) {
+      const emailMatch =
+      if (!isSuperAdmin && !isOfficeAdmin) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
         Access denied. Administrator privileges are required to view this section.
@@ -663,7 +671,13 @@ const handleCreateClient = async (e) => {
                 <div className="md:col-span-3">
                   <label className="block text-sm font-medium text-slate-700 mb-1">Assign to Tax Office</label>
                   <select
-                    value={newClient.organization_id || resolvedOrg?.id || ''}
+                    value={
+                      newClient.organization_id ||
+                      resolvedOrg?.id ||
+                      membership?.organization_id ||
+                      organizations[0]?.id ||
+                      ''
+                    }
                     onChange={(e) => setNewClient({ ...newClient, organization_id: e.target.value })}
                     className="w-full md:w-1/2 px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
                   >
@@ -686,61 +700,6 @@ const handleCreateClient = async (e) => {
                 {creatingClient ? 'Creating Client Account...' : 'Create Client Login'}
               </button>
             </div>
-            const handleCreateClient = async (e) => {
-    e.preventDefault();
-    setCreatingClient(true);
-    setStatusMessage(null);
-    try {
-      const targetOrgId = isSuperAdmin
-        ? newClient.organization_id ||
-          resolvedOrg?.id ||
-          membership?.organization_id ||
-          organizations[0]?.id ||
-          ''
-        : resolvedOrg?.id || membership?.organization_id || '';
-
-      if (!targetOrgId) {
-        throw new Error('No tax office organization selected or linked to your account.');
-      }
-
-      const { data, error } = await supabase.functions.invoke('create-office-client', {
-        body: {
-          full_name: newClient.full_name.trim(),
-          email: newClient.email.trim().toLowerCase(),
-          password: newClient.password,
-          organization_id: targetOrgId,
-        },
-      });
-
-      if (error) {
-        let detailedMsg = error.message;
-        try {
-          if (error.context && typeof error.context.json === 'function') {
-            const errBody = await error.context.json();
-            if (errBody?.error) detailedMsg = errBody.error;
-          }
-        } catch (_) {
-          // Fall back to generic error message if body isn't JSON
-        }
-        throw new Error(detailedMsg);
-      }
-
-      if (data?.error) throw new Error(data.error);
-
-      setStatusMessage({
-        type: 'success',
-        text: `Client account created for ${data.client.full_name} (${data.client.email}).`,
-      });
-      setNewClient({ full_name: '', email: '', password: '', organization_id: '' });
-      setShowAddClientForm(false);
-      fetchMembers();
-    } catch (err) {
-      setStatusMessage({ type: 'error', text: err.message });
-    } finally {
-      setCreatingClient(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
           </form>
         )}
 
@@ -844,20 +803,20 @@ const handleCreateClient = async (e) => {
                             View Books
                           </button>
                           {member.user_id !== membership?.user_id &&
-                          member.role !== 'super_admin' &&
-                          (isSuperAdmin || (member.role || 'client').toLowerCase() === 'client') && (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleMemberStatus(member)}
-                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                member.is_active
-                                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                                  : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
-                              }`}
-                            >
-                              {member.is_active ? 'Suspend' : 'Activate'}
-                            </button>
-                          )}
+                            memberRole !== 'super_admin' &&
+                            (isSuperAdmin || memberRole === 'client') && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMemberStatus(member)}
+                                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                  member.is_active
+                                    ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                                    : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
+                                }`}
+                              >
+                                {member.is_active ? 'Suspend' : 'Activate'}
+                              </button>
+                            )}
                         </div>
                       </td>
                     </tr>
@@ -1071,4 +1030,4 @@ const handleCreateClient = async (e) => {
       )}
     </div>
   );
-}
+}  
