@@ -13,6 +13,7 @@ import {
   Users,
   UserCheck,
   UserX,
+  UserPlus,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -20,13 +21,23 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const isSuperAdmin = membership?.role === 'super_admin';
   const isOfficeAdmin = membership?.role === 'office_admin';
 
-  // Resolved organization for the active admin (prevents blank screen if currentOrg is 'default')
+  // Resolved organization for the active admin
   const [resolvedOrg, setResolvedOrg] = useState(null);
   const [loadingOrgDetails, setLoadingOrgDetails] = useState(true);
 
   // Client & member list for the organization
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Add Client form state (for office_admin and super_admin)
+  const [showAddClientForm, setShowAddClientForm] = useState(false);
+  const [newClient, setNewClient] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    organization_id: '',
+  });
+  const [creatingClient, setCreatingClient] = useState(false);
 
   // List of all organizations (for super_admin)
   const [organizations, setOrganizations] = useState([]);
@@ -58,14 +69,13 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   // Feedback banner
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // 1. Ensure we have the real database organization record (fixes blank screen for office_admin)
+  // 1. Resolve database organization record
   useEffect(() => {
     let isMounted = true;
 
     async function loadAdminOrganization() {
       setLoadingOrgDetails(true);
       try {
-        // Use currentOrg if it is already a real DB organization
         if (currentOrg && currentOrg.id && currentOrg.id !== 'default') {
           if (isMounted) {
             setResolvedOrg(currentOrg);
@@ -80,7 +90,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           return;
         }
 
-        // Otherwise fetch directly using membership.organization_id
         if (membership?.organization_id) {
           const { data, error } = await supabase
             .from('organizations')
@@ -110,7 +119,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     };
   }, [currentOrg, membership?.organization_id]);
 
-  // 2. Fetch client & staff list for this office (or all offices for super_admin)
+  // 2. Fetch client & staff list (and all organizations if super_admin)
   useEffect(() => {
     if (isSuperAdmin || isOfficeAdmin) {
       fetchMembers();
@@ -123,12 +132,11 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const fetchMembers = async () => {
     setLoadingMembers(true);
     try {
-let query = supabase
+      let query = supabase
         .from('user_memberships')
         .select('user_id, organization_id, role, is_active, email, full_name, created_at')
         .order('created_at', { ascending: false });
 
-      // Office admins only see members in their own organization
       if (!isSuperAdmin && membership?.organization_id) {
         query = query.eq('organization_id', membership.organization_id);
       }
@@ -157,6 +165,49 @@ let query = supabase
       setStatusMessage({ type: 'error', text: `Failed to load tax offices: ${err.message}` });
     } finally {
       setLoadingOrgs(false);
+    }
+  };
+
+  // Create a new client account under this tax office
+  const handleCreateClient = async (e) => {
+    e.preventDefault();
+    setCreatingClient(true);
+    setStatusMessage(null);
+
+    try {
+      const targetOrgId = isSuperAdmin
+        ? newClient.organization_id || resolvedOrg?.id || membership?.organization_id
+        : resolvedOrg?.id || membership?.organization_id;
+
+      const { data, error } = await supabase.functions.invoke('create-office-client', {
+        body: {
+          full_name: newClient.full_name.trim(),
+          email: newClient.email.trim().toLowerCase(),
+          password: newClient.password,
+          organization_id: targetOrgId,
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+
+      setStatusMessage({
+        type: 'success',
+        text: `Client account created for ${data.client.full_name} (${data.client.email}). They can log in immediately.`,
+      });
+
+      setNewClient({
+        full_name: '',
+        email: '',
+        password: '',
+        organization_id: '',
+      });
+      setShowAddClientForm(false);
+      fetchMembers();
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message });
+    } finally {
+      setCreatingClient(false);
     }
   };
 
@@ -431,7 +482,7 @@ let query = supabase
         </div>
       )}
 
-      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY (Visible to Office Admins & Super Admins) */}
+      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY (With Direct Add Client Form) */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -439,11 +490,109 @@ let query = supabase
             <h2 className="text-lg font-semibold text-slate-800">
               {isSuperAdmin ? 'All Users & Clients' : 'Office Clients & Staff'}
             </h2>
+            <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+              {members.length}
+            </span>
           </div>
-          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
-            {members.length} {members.length === 1 ? 'Account' : 'Accounts'}
-          </span>
+
+          <button
+            type="button"
+            onClick={() => setShowAddClientForm(!showAddClientForm)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            {showAddClientForm ? 'Cancel' : 'Add Client'}
+          </button>
         </div>
+
+        {/* Add New Client Form */}
+        {showAddClientForm && (
+          <form
+            onSubmit={handleCreateClient}
+            className="p-6 bg-emerald-50/50 border-b border-slate-200 space-y-4"
+          >
+            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">
+              Create Client Bookkeeping Account
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Client Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Jane Doe"
+                  value={newClient.full_name}
+                  onChange={(e) => setNewClient({ ...newClient, full_name: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Client Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="jane@clientbusiness.com"
+                  value={newClient.email}
+                  onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Temporary Password *
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="Minimum 6 characters"
+                  value={newClient.password}
+                  onChange={(e) => setNewClient({ ...newClient, password: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              {isSuperAdmin && organizations.length > 0 && (
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Assign to Tax Office
+                  </label>
+                  <select
+                    value={newClient.organization_id || resolvedOrg?.id || ''}
+                    onChange={(e) =>
+                      setNewClient({ ...newClient, organization_id: e.target.value })
+                    }
+                    className="w-full md:w-1/2 px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                  >
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.brand_name} ({org.slug})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={creatingClient}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
+              >
+                <UserPlus className="w-4 h-4" />
+                {creatingClient ? 'Creating Client Account...' : 'Create Client Login'}
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -466,11 +615,11 @@ let query = supabase
               ) : members.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="py-8 text-center text-slate-500">
-                    No clients registered under this office yet. Share your portal link above so clients can sign up.
+                    No clients registered under this office yet. Click "Add Client" above or share your portal link.
                   </td>
                 </tr>
               ) : (
-               members.map((member) => (
+                members.map((member) => (
                   <tr key={member.user_id} className="hover:bg-slate-50">
                     <td className="py-3.5 px-6">
                       <div className="font-medium text-slate-900">
