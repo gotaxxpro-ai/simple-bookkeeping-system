@@ -1,16 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Save, CheckCircle2, AlertCircle, Globe, Palette, Mail, ShieldCheck, ExternalLink } from 'lucide-react';
+import {
+  Building2,
+  Plus,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Globe,
+  Palette,
+  Mail,
+  ShieldCheck,
+  ExternalLink,
+  Users,
+  UserCheck,
+  UserX,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated }) {
   const isSuperAdmin = membership?.role === 'super_admin';
   const isOfficeAdmin = membership?.role === 'office_admin';
 
+  // Resolved organization for the active admin (prevents blank screen if currentOrg is 'default')
+  const [resolvedOrg, setResolvedOrg] = useState(null);
+  const [loadingOrgDetails, setLoadingOrgDetails] = useState(true);
+
+  // Client & member list for the organization
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   // List of all organizations (for super_admin)
   const [organizations, setOrganizations] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
 
-  // Branding editor state (for current organization)
+  // Branding editor state
   const [brandForm, setBrandForm] = useState({
     brand_name: '',
     tagline: '',
@@ -20,7 +42,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   });
   const [savingBrand, setSavingBrand] = useState(false);
 
-  // New Tax Office creation state (for super_admin)
+  // New Tax Office creation state (super_admin)
   const [showNewOfficeForm, setShowNewOfficeForm] = useState(false);
   const [newOffice, setNewOffice] = useState({
     slug: '',
@@ -36,25 +58,90 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   // Feedback banner
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Populate branding form when currentOrg loads
+  // 1. Ensure we have the real database organization record (fixes blank screen for office_admin)
   useEffect(() => {
-    if (currentOrg && currentOrg.id !== 'default') {
-      setBrandForm({
-        brand_name: currentOrg.brand_name || '',
-        tagline: currentOrg.tagline || '',
-        primary_color: currentOrg.primary_color || '#059669',
-        logo_url: currentOrg.logo_url || '',
-        support_email: currentOrg.support_email || '',
-      });
-    }
-  }, [currentOrg]);
+    let isMounted = true;
 
-  // Fetch all organizations if user is super_admin
+    async function loadAdminOrganization() {
+      setLoadingOrgDetails(true);
+      try {
+        // Use currentOrg if it is already a real DB organization
+        if (currentOrg && currentOrg.id && currentOrg.id !== 'default') {
+          if (isMounted) {
+            setResolvedOrg(currentOrg);
+            setBrandForm({
+              brand_name: currentOrg.brand_name || '',
+              tagline: currentOrg.tagline || '',
+              primary_color: currentOrg.primary_color || '#059669',
+              logo_url: currentOrg.logo_url || '',
+              support_email: currentOrg.support_email || '',
+            });
+          }
+          return;
+        }
+
+        // Otherwise fetch directly using membership.organization_id
+        if (membership?.organization_id) {
+          const { data, error } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('id', membership.organization_id)
+            .maybeSingle();
+
+          if (!error && data && isMounted) {
+            setResolvedOrg(data);
+            setBrandForm({
+              brand_name: data.brand_name || '',
+              tagline: data.tagline || '',
+              primary_color: data.primary_color || '#059669',
+              logo_url: data.logo_url || '',
+              support_email: data.support_email || '',
+            });
+          }
+        }
+      } finally {
+        if (isMounted) setLoadingOrgDetails(false);
+      }
+    }
+
+    loadAdminOrganization();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentOrg, membership?.organization_id]);
+
+  // 2. Fetch client & staff list for this office (or all offices for super_admin)
   useEffect(() => {
+    if (isSuperAdmin || isOfficeAdmin) {
+      fetchMembers();
+    }
     if (isSuperAdmin) {
       fetchAllOrganizations();
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isOfficeAdmin, membership?.organization_id]);
+
+  const fetchMembers = async () => {
+    setLoadingMembers(true);
+    try {
+      let query = supabase
+        .from('user_memberships')
+        .select('id, user_id, organization_id, role, is_active, email, full_name, created_at')
+        .order('created_at', { ascending: false });
+
+      // Office admins only see members in their own organization
+      if (!isSuperAdmin && membership?.organization_id) {
+        query = query.eq('organization_id', membership.organization_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setMembers(data || []);
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: `Failed to load client list: ${err.message}` });
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
 
   const fetchAllOrganizations = async () => {
     setLoadingOrgs(true);
@@ -73,11 +160,11 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Update branding for the current organization
+  // Update white-label branding
   const handleSaveBranding = async (e) => {
     e.preventDefault();
-    if (!currentOrg?.id || currentOrg.id === 'default') {
-      setStatusMessage({ type: 'error', text: 'No database organization linked to this session.' });
+    if (!resolvedOrg?.id || resolvedOrg.id === 'default') {
+      setStatusMessage({ type: 'error', text: 'No database organization linked to this account.' });
       return;
     }
 
@@ -94,12 +181,13 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           logo_url: brandForm.logo_url.trim() || null,
           support_email: brandForm.support_email.trim() || null,
         })
-        .eq('id', currentOrg.id)
+        .eq('id', resolvedOrg.id)
         .select()
         .single();
 
       if (error) throw error;
 
+      setResolvedOrg(data);
       setStatusMessage({ type: 'success', text: 'White-label branding saved successfully.' });
       if (onOrgUpdated) onOrgUpdated(data);
       if (isSuperAdmin) fetchAllOrganizations();
@@ -110,7 +198,31 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Create a new tax office + Auth admin user via Edge Function
+  // Toggle client active/suspended status
+  const handleToggleMemberStatus = async (member) => {
+    if (member.user_id === membership?.user_id) {
+      setStatusMessage({ type: 'error', text: 'You cannot suspend your own administrator account.' });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('user_memberships')
+        .update({ is_active: !member.is_active })
+        .eq('id', member.id);
+
+      if (error) throw error;
+      fetchMembers();
+      setStatusMessage({
+        type: 'success',
+        text: `Account for ${member.email || member.user_id} is now ${!member.is_active ? 'Active' : 'Suspended'}.`,
+      });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: `Failed to update user status: ${err.message}` });
+    }
+  };
+
+  // Create a new tax office + Auth admin user via Edge Function (super_admin)
   const handleCreateTaxOffice = async (e) => {
     e.preventDefault();
     setCreatingOffice(true);
@@ -148,6 +260,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       });
       setShowNewOfficeForm(false);
       fetchAllOrganizations();
+      fetchMembers();
     } catch (err) {
       setStatusMessage({ type: 'error', text: err.message });
     } finally {
@@ -155,7 +268,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Toggle active/suspended status of an organization (super_admin only)
+  // Toggle active/suspended status of an organization (super_admin)
   const handleToggleOrgStatus = async (org) => {
     try {
       const { error } = await supabase
@@ -202,23 +315,27 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         </div>
       )}
 
-      {/* SECTION 1: WHITE-LABEL BRANDING SETTINGS (For Current Organization) */}
-      {currentOrg && currentOrg.id !== 'default' && (
+      {/* SECTION 1: WHITE-LABEL BRANDING SETTINGS */}
+      {loadingOrgDetails ? (
+        <div className="p-6 bg-white rounded-2xl border border-slate-200 text-sm text-slate-500">
+          Loading tax office settings...
+        </div>
+      ) : resolvedOrg ? (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <Palette className="w-5 h-5 text-emerald-600" />
               <h2 className="text-lg font-semibold text-slate-800">
-                White-Label Branding ({currentOrg.slug})
+                White-Label Branding ({resolvedOrg.slug})
               </h2>
             </div>
             <a
-              href={`${window.location.origin}/?office=${currentOrg.slug}`}
+              href={`${window.location.origin}/?office=${resolvedOrg.slug}`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
             >
-              Preview Portal Link <ExternalLink className="w-3.5 h-3.5" />
+              Client Signup & Portal Link <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
 
@@ -308,9 +425,118 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
             </div>
           </form>
         </div>
+      ) : (
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm">
+          Your administrator account is not linked to a specific organization yet. Contact your platform administrator to assign your `organization_id`.
+        </div>
       )}
 
-      {/* SECTION 2: SUPER ADMIN TAX OFFICE MANAGEMENT */}
+      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY (Visible to Office Admins & Super Admins) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Users className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-lg font-semibold text-slate-800">
+              {isSuperAdmin ? 'All Users & Clients' : 'Office Clients & Staff'}
+            </h2>
+          </div>
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
+            {members.length} {members.length === 1 ? 'Account' : 'Accounts'}
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
+                <th className="py-3 px-6">Client / User</th>
+                <th className="py-3 px-6">Role</th>
+                <th className="py-3 px-6">Joined</th>
+                <th className="py-3 px-6">Status</th>
+                <th className="py-3 px-6 text-right">Access</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-sm">
+              {loadingMembers ? (
+                <tr>
+                  <td colSpan="5" className="py-8 text-center text-slate-500">
+                    Loading client directory...
+                  </td>
+                </tr>
+              ) : members.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="py-8 text-center text-slate-500">
+                    No clients registered under this office yet. Share your portal link above so clients can sign up.
+                  </td>
+                </tr>
+              ) : (
+                members.map((member) => (
+                  <tr key={member.id} className="hover:bg-slate-50">
+                    <td className="py-3.5 px-6">
+                      <div className="font-medium text-slate-900">
+                        {member.full_name || 'Unnamed User'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {member.email || member.user_id}
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-6">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          member.role === 'super_admin'
+                            ? 'bg-purple-100 text-purple-800'
+                            : member.role === 'office_admin'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {member.role.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-6 text-xs text-slate-500">
+                      {member.created_at
+                        ? new Date(member.created_at).toLocaleDateString()
+                        : '—'}
+                    </td>
+                    <td className="py-3.5 px-6">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          member.is_active
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {member.is_active ? (
+                          <>
+                            <UserCheck className="w-3 h-3" /> Active
+                          </>
+                        ) : (
+                          <>
+                            <UserX className="w-3 h-3" /> Suspended
+                          </>
+                        )}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      {member.user_id !== membership?.user_id && member.role !== 'super_admin' && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMemberStatus(member)}
+                          className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
+                        >
+                          {member.is_active ? 'Suspend' : 'Activate'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SECTION 3: SUPER ADMIN TAX OFFICE NETWORK MANAGEMENT */}
       {isSuperAdmin && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -330,7 +556,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
             </button>
           </div>
 
-          {/* Add New Tax Office Form */}
           {showNewOfficeForm && (
             <form
               onSubmit={handleCreateTaxOffice}
@@ -458,7 +683,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
             </form>
           )}
 
-          {/* Directory Table of Tax Offices */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
