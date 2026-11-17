@@ -16,11 +16,6 @@ import BookkeepingLedger from './components/BookkeepingLedger';
 import OfficeAdminTab from './components/OfficeAdminTab';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
-const [showAuth, setShowAuth] = useState(() => {
-  const slug = new URLSearchParams(window.location.search).get('office');
-  return Boolean(slug && slug !== 'default');
-});
-
 const DEFAULT_ORG = {
   id: 'default',
   slug: 'default',
@@ -35,6 +30,11 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  const [showAuth, setShowAuth] = useState(() => {
+    const slug = new URLSearchParams(window.location.search).get('office');
+    return Boolean(slug && slug !== 'default');
+  });
 
   const [currentOrg, setCurrentOrg] = useState(DEFAULT_ORG);
   const [membership, setMembership] = useState(null);
@@ -142,17 +142,19 @@ export default function App() {
 
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
+
       if (isSignUp) {
-        if (password.length < 6) {
+        if (cleanPassword.length < 6) {
           throw new Error('Password must be at least 6 characters long.');
         }
-        if (password !== confirmPassword) {
+        if (cleanPassword !== confirmPassword.trim()) {
           throw new Error('Passwords do not match.');
         }
 
         const { error } = await supabase.auth.signUp({
           email: cleanEmail,
-          password,
+          password: cleanPassword,
           options: {
             data: {
               full_name: fullName.trim(),
@@ -167,7 +169,7 @@ export default function App() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
-          password,
+          password: cleanPassword,
         });
         if (error) throw error;
       }
@@ -182,6 +184,7 @@ export default function App() {
     await supabase.auth.signOut();
     setMembership(null);
     setActiveView('ledger');
+    setShowAuth(false);
   };
 
   if (authLoading || (session && loadingMembership)) {
@@ -193,8 +196,45 @@ export default function App() {
   }
 
   if (!session) {
+    if (!showAuth) {
+      return (
+        <LandingPage
+          currentOrg={currentOrg}
+          primaryColor={primaryColor}
+          onSignInClick={() => {
+            setIsSignUp(false);
+            setAuthError(null);
+            setAuthMessage(null);
+            setShowAuth(true);
+          }}
+          onSignUpClick={() => {
+            setIsSignUp(true);
+            setAuthError(null);
+            setAuthMessage(null);
+            setShowAuth(true);
+          }}
+          onGetStarted={() => {
+            setIsSignUp(true);
+            setAuthError(null);
+            setAuthMessage(null);
+            setShowAuth(true);
+          }}
+        />
+      );
+    }
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md mb-3">
+          <button
+            type="button"
+            onClick={() => setShowAuth(false)}
+            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            &larr; Back to Home
+          </button>
+        </div>
+
         <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div
             className="px-6 py-6 text-white text-center space-y-1.5"
@@ -391,80 +431,4 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setActiveView('ledger')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'ledger'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  My Books
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveView('admin')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'admin'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowPasswordModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-              Change Password
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 px-4 py-6">
-        {isAdmin && activeView === 'admin' ? (
-          <OfficeAdminTab
-            membership={membership}
-            currentOrg={currentOrg}
-            onOrgUpdated={(updatedOrg) => setCurrentOrg(updatedOrg)}
-          />
-        ) : (
-          <BookkeepingLedger
-            targetUserId={session.user.id}
-            targetUserName={membership?.full_name || session.user.email}
-            readOnly={false}
-            primaryColor={primaryColor}
-            supportEmail={currentOrg?.support_email}
-            officeName={currentOrg?.brand_name}
-          />
-        )}
-      </main>
-
-      <ChangePasswordModal
-        isOpen={showPasswordModal || mustChangePassword}
-        onClose={() => {
-          if (!mustChangePassword) {
-            setShowPasswordModal(false);
-          }
-        }}
-        primaryColor={primaryColor}
-        forceChange={mustChangePassword}
-      />
-    </div>
-  );
-}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1
