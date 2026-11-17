@@ -91,6 +91,29 @@ export default function App() {
       setTenant(resolvedOrg);
       document.title = resolvedOrg.brand_name || 'Simple Bookkeeping System';
     }
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+
+  const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+
+  // Automatically open the modal if the user has a temporary password flag
+  useEffect(() => {
+    if (mustChangePassword) {
+      setShowPasswordModal(true);
+    }
+  }, [mustChangePassword]);
+    <ChangePasswordModal
+  isOpen={showPasswordModal || mustChangePassword}
+  onClose={() => {
+    if (!mustChangePassword) {
+      setShowPasswordModal(false);
+      setIsRecoveryMode(false);
+    }
+  }}
+  primaryColor={primaryColor}
+  isRecoveryMode={isRecoveryMode}
+  forceChange={mustChangePassword}
+/>
 
     // Ensure user_memberships row exists (handles users who confirmed via email link)
     let { data: mem } = await supabase
