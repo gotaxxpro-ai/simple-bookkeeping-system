@@ -123,9 +123,9 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const fetchMembers = async () => {
     setLoadingMembers(true);
     try {
-      let query = supabase
+let query = supabase
         .from('user_memberships')
-        .select('id, user_id, organization_id, role, is_active, email, full_name, created_at')
+        .select('user_id, organization_id, role, is_active, email, full_name, created_at')
         .order('created_at', { ascending: false });
 
       // Office admins only see members in their own organization
@@ -209,7 +209,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       const { error } = await supabase
         .from('user_memberships')
         .update({ is_active: !member.is_active })
-        .eq('id', member.id);
+        .eq('user_id', member.user_id);
 
       if (error) throw error;
       fetchMembers();
@@ -470,8 +470,8 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                   </td>
                 </tr>
               ) : (
-                members.map((member) => (
-                  <tr key={member.id} className="hover:bg-slate-50">
+               members.map((member) => (
+                  <tr key={member.user_id} className="hover:bg-slate-50">
                     <td className="py-3.5 px-6">
                       <div className="font-medium text-slate-900">
                         {member.full_name || 'Unnamed User'}
