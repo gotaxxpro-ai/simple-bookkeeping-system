@@ -767,20 +767,20 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                             View Books
                           </button>
                           {member.user_id !== membership?.user_id &&
-                            memberRole !== 'super_admin' &&
-                            (isSuperAdmin || memberRole === 'client') && (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleMemberStatus(member)}
-                                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                  member.is_active
-                                    ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                                    : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
-                                }`}
-                              >
-                                {member.is_active ? 'Suspend' : 'Activate'}
-                              </button>
-                            )}
+                          member.role !== 'super_admin' &&
+                          (isSuperAdmin || (member.role || 'client').toLowerCase() === 'client') && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMemberStatus(member)}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                member.is_active
+                                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
+                              }`}
+                            >
+                              {member.is_active ? 'Suspend' : 'Activate'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
