@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import LandingPage from './components/LandingPage';
 import {
   LogOut,
   ShieldCheck,
@@ -14,6 +15,11 @@ import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
 import OfficeAdminTab from './components/OfficeAdminTab';
 import ChangePasswordModal from './components/ChangePasswordModal';
+
+const [showAuth, setShowAuth] = useState(() => {
+  const slug = new URLSearchParams(window.location.search).get('office');
+  return Boolean(slug && slug !== 'default');
+});
 
 const DEFAULT_ORG = {
   id: 'default',
