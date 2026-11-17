@@ -34,12 +34,10 @@ export default function App() {
   const [membership, setMembership] = useState(null);
   const [loadingMembership, setLoadingMembership] = useState(false);
 
-  // Navigation & Password Modal state
-  const [activeView, setActiveView] = useState('ledger'); // 'ledger' | 'admin'
+  const [activeView, setActiveView] = useState('ledger');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
 
-  // Login / Signup form state
   const [isSignUp, setIsSignUp] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,7 +49,6 @@ export default function App() {
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
   const primaryColor = currentOrg?.primary_color || '#059669';
 
-  // 1. Resolve white-label organization from ?office=slug URL parameter
   useEffect(() => {
     let isMounted = true;
     async function loadBrandingFromSlug() {
@@ -76,7 +73,6 @@ export default function App() {
     };
   }, []);
 
-  // 2. Listen to Supabase Auth state & PASSWORD_RECOVERY links
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
@@ -96,14 +92,12 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 3. Auto-prompt password change when signed in with temporary password
   useEffect(() => {
     if (mustChangePassword) {
       setShowPasswordModal(true);
     }
   }, [mustChangePassword]);
 
-  // 4. Load user_memberships & assigned organization once logged in
   useEffect(() => {
     if (!session?.user?.id) {
       setMembership(null);
@@ -138,7 +132,6 @@ export default function App() {
     };
   }, [session?.user?.id]);
 
-  // Auth handlers (in component body, BEFORE return)
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setSubmittingAuth(true);
@@ -205,8 +198,6 @@ export default function App() {
     setMembership(null);
     setActiveView('ledger');
   };
-
-  // Loading state
   if (authLoading || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
@@ -215,7 +206,6 @@ export default function App() {
     );
   }
 
-  // Unauthenticated Login / Sign-Up Screen
   if (!session) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -336,7 +326,6 @@ export default function App() {
     );
   }
 
-  // Suspended Account Lockout Screen
   if (membership && membership.is_active === false) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -377,5 +366,112 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top White-Label Header */}
-      <header className="
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {currentOrg?.logo_url ? (
+              <img src={currentOrg.logo_url} alt={currentOrg.brand_name} className="h-8 object-contain" />
+            ) : (
+              <span
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {(currentOrg.brand_name || 'S')[0]}
+              </span>
+            )}
+            <div>
+              <div className="text-base font-bold text-slate-900 leading-tight">
+                {currentOrg.brand_name}
+              </div>
+              <div className="text-[11px] text-slate-500">{currentOrg.tagline}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('ledger')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    activeView === 'ledger'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  My Books
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('admin')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    activeView === 'admin'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsRecoveryMode(false);
+                setShowPasswordModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+              Change Password
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 py-6">
+        {isAdmin && activeView === 'admin' ? (
+          <OfficeAdminTab
+            membership={membership}
+            currentOrg={currentOrg}
+            onOrgUpdated={(updatedOrg) => setCurrentOrg(updatedOrg)}
+          />
+        ) : (
+          <BookkeepingLedger
+            targetUserId={session.user.id}
+            targetUserName={membership?.full_name || session.user.email}
+            readOnly={false}
+            primaryColor={primaryColor}
+            supportEmail={currentOrg?.support_email}
+            officeName={currentOrg?.brand_name}
+          />
+        )}
+      </main>
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal || mustChangePassword}
+        onClose={() => {
+          if (!mustChangePassword) {
+            setShowPasswordModal(false);
+            setIsRecoveryMode(false);
+          }
+        }}
+        primaryColor={primaryColor}
+        isRecoveryMode={isRecoveryMode}
+        forceChange={mustChangePassword}
+      />
+    </div>
+  );
+}
