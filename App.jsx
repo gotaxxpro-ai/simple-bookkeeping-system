@@ -1,571 +1,381 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { resolveTenantOrganization, DEFAULT_BRAND } from './lib/tenant';
-import Auth from './components/Auth';
-import Dashboard from './components/Dashboard';
-import TransactionLedger from './components/TransactionLedger';
-import OwnersDrawTab from './components/OwnersDrawTab';
-import VehicleTab from './components/VehicleTab';
-import CogsTab from './components/CogsTab';
-import HomeOfficeTab from './components/HomeOfficeTab';
-import NextStepsTab from './components/NextStepsTab';
-import OfficeAdminTab from './components/OfficeAdminTab';
+import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  Car,
-  Package,
-  Home,
-  CheckSquare,
-  Building2,
   LogOut,
+  ShieldCheck,
   BookOpen,
-  ArrowLeft,
+  KeyRound,
+  AlertTriangle,
+  Building2,
+  Mail,
+  Lock,
+  User,
 } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import BookkeepingLedger from './components/BookkeepingLedger';
+import OfficeAdminTab from './components/OfficeAdminTab';
+import ChangePasswordModal from './components/ChangePasswordModal';
+
+const DEFAULT_ORG = {
+  id: 'default',
+  slug: 'default',
+  brand_name: 'Simple Bookkeeping System',
+  tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
+  primary_color: '#059669',
+  logo_url: null,
+  support_email: '',
+  is_active: true,
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [logoError, setLogoError] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Multi-tenant white-label state
-  const [tenant, setTenant] = useState(DEFAULT_BRAND);
+  const [currentOrg, setCurrentOrg] = useState(DEFAULT_ORG);
   const [membership, setMembership] = useState(null);
-  const [inspectedClient, setInspectedClient] = useState(null); // When an Office Admin opens a client's report
+  const [loadingMembership, setLoadingMembership] = useState(false);
 
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  // Navigation & Password Modal state
+  const [activeView, setActiveView] = useState('ledger'); // 'ledger' | 'admin'
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
 
-  const [profile, setProfile] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [draws, setDraws] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-  const [cogsList, setCogsList] = useState([]);
-  const [homeOfficeList, setHomeOfficeList] = useState([]);
+  // Login / Signup form state
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submittingAuth, setSubmittingAuth] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [authMessage, setAuthMessage] = useState(null);
 
-  // Resolve white-label branding immediately on load (even before login)
+  const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+  const primaryColor = currentOrg?.primary_color || '#059669';
+
+  // 1. Resolve white-label organization from ?office=slug URL parameter
   useEffect(() => {
-    resolveTenantOrganization(null).then((org) => {
-      if (org) {
-        setTenant(org);
-        document.title = org.brand_name || 'Simple Bookkeeping System';
+    let isMounted = true;
+    async function loadBrandingFromSlug() {
+      const params = new URLSearchParams(window.location.search);
+      const slug = (params.get('office') || '').trim().toLowerCase();
+      if (!slug || slug === 'default') return;
+
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (!error && data && isMounted) {
+        setCurrentOrg(data);
+        document.title = data.brand_name || 'Simple Bookkeeping System';
       }
-    });
+    }
+    loadBrandingFromSlug();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
+  // 2. Listen to Supabase Auth state & PASSWORD_RECOVERY links
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setLoadingAuth(false);
-      return;
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingAuth(false);
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      setSession(initialSession);
+      setAuthLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      setSession(currentSession);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveryMode(true);
+        setShowPasswordModal(true);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (session?.user) {
-      initializeUserAndTenant(session.user);
-    } else {
-      setMembership(null);
-      setInspectedClient(null);
-    }
-  }, [session]);
-
-  const initializeUserAndTenant = async (user) => {
-    const resolvedOrg = await resolveTenantOrganization(user.id);
-    if (resolvedOrg) {
-      setTenant(resolvedOrg);
-      document.title = resolvedOrg.brand_name || 'Simple Bookkeeping System';
-    }
-    const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
-
-  const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
-
-  // Automatically open the modal if the user has a temporary password flag
+  // 3. Auto-prompt password change when signed in with temporary password
   useEffect(() => {
     if (mustChangePassword) {
       setShowPasswordModal(true);
     }
   }, [mustChangePassword]);
-    <ChangePasswordModal
-  isOpen={showPasswordModal || mustChangePassword}
-  onClose={() => {
-    if (!mustChangePassword) {
-      setShowPasswordModal(false);
-      setIsRecoveryMode(false);
-    }
-  }}
-  primaryColor={primaryColor}
-  isRecoveryMode={isRecoveryMode}
-  forceChange={mustChangePassword}
-/>
 
-    // Ensure user_memberships row exists (handles users who confirmed via email link)
-    let { data: mem } = await supabase
-      .from('user_memberships')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (!mem && resolvedOrg?.id) {
-      const superEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || '').toLowerCase();
-      const role =
-        (user.email || '').toLowerCase() === superEmail ? 'super_admin' : 'client';
-
-      const { data: createdMem } = await supabase
-        .from('user_memberships')
-        .upsert({
-          user_id: user.id,
-          organization_id: user.user_metadata?.organization_id || resolvedOrg.id,
-          role,
-          full_name: user.user_metadata?.full_name || '',
-          email: user.email || '',
-        })
-        .select()
-        .single();
-      mem = createdMem;
+  // 4. Load user_memberships & assigned organization once logged in
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setMembership(null);
+      return;
     }
 
-    setMembership(mem);
-    await fetchUserBookkeepingData(user.id);
-  };
+    let isMounted = true;
+    async function loadUserMembership() {
+      setLoadingMembership(true);
+      try {
+        const { data: memberData, error } = await supabase
+          .from('user_memberships')
+          .select('*, organizations(*)')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
 
-  const fetchUserBookkeepingData = async (targetUserId) => {
-    const [profRes, txRes, drawRes, vehRes, cogsRes, hoRes] = await Promise.all([
-      supabase.from('business_profiles').select('*').eq('user_id', targetUserId).maybeSingle(),
-      supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('tx_date', { ascending: false }),
-      supabase
-        .from('owners_draws')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('draw_date', { ascending: false }),
-      supabase
-        .from('vehicles')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('created_at', { ascending: true }),
-      supabase.from('cogs_records').select('*').eq('user_id', targetUserId),
-      supabase.from('home_office_records').select('*').eq('user_id', targetUserId),
-    ]);
+        if (!error && memberData && isMounted) {
+          setMembership(memberData);
+          if (memberData.organizations) {
+            setCurrentOrg(memberData.organizations);
+            document.title = memberData.organizations.brand_name || 'Simple Bookkeeping System';
+          }
+        }
+      } finally {
+        if (isMounted) setLoadingMembership(false);
+      }
+    }
 
-    setProfile(profRes.data || null);
-    setTransactions(txRes.data || []);
-    setDraws(drawRes.data || []);
-    setVehicles(vehRes.data || []);
-    setCogsList(cogsRes.data || []);
-    setHomeOfficeList(hoRes.data || []);
-  };
+    loadUserMembership();
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.user?.id]);
 
-  const handleInspectClient = async (clientMembership) => {
-    setInspectedClient(clientMembership);
-    await fetchUserBookkeepingData(clientMembership.user_id);
-    setActiveTab('dashboard');
-  };
+  // Auth handlers (in component body, BEFORE return)
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingAuth(true);
+    setAuthError(null);
+    setAuthMessage(null);
 
-  const handleExitClientInspection = async () => {
-    setInspectedClient(null);
-    await fetchUserBookkeepingData(session.user.id);
-    setActiveTab('office_admin');
-  };
-
-  // Compute dynamic year selector options
-  const availableYears = useMemo(() => {
-    const yrs = new Set([currentYear - 1, currentYear, currentYear + 1, 2024, 2025, 2026]);
-    transactions.forEach((t) => yrs.add(Number(t.tx_year)));
-    draws.forEach((d) => yrs.add(Number(d.draw_year)));
-    vehicles.forEach((v) => yrs.add(Number(v.tax_year)));
-    return Array.from(yrs).sort((a, b) => b - a);
-  }, [transactions, draws, vehicles, currentYear]);
-
-  // CRUD Handlers (Disabled when an Office Admin is inspecting a client's read-only report)
-  const effectiveUserId = inspectedClient ? inspectedClient.user_id : session?.user?.id;
-
-  const handleSaveProfile = async (updates) => {
-    if (inspectedClient) return;
-    const payload = { user_id: effectiveUserId, ...updates, updated_at: new Date().toISOString() };
-    const { data, error } = await supabase
-      .from('business_profiles')
-      .upsert(payload)
-      .select()
-      .single();
-    if (!error && data) setProfile(data);
-  };
-
-  const handleAddTransaction = async (tx) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([{ ...tx, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) {
-      setTransactions((prev) => [data, ...prev]);
-      setSelectedYear(Number(data.tx_year));
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            data: {
+              full_name: fullName.trim(),
+              office_slug: currentOrg?.slug !== 'default' ? currentOrg?.slug : undefined,
+            },
+          },
+        });
+        if (error) throw error;
+        setAuthMessage('Account created! Check your email to confirm or sign in.');
+        setIsSignUp(false);
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (error) throw error;
+      }
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed.');
+    } finally {
+      setSubmittingAuth(false);
     }
   };
 
-  const handleBulkImportTransactions = async (rows) => {
-    if (inspectedClient) return;
-    const payload = rows.map((r) => ({ ...r, user_id: effectiveUserId }));
-    const { data, error } = await supabase.from('transactions').insert(payload).select();
-    if (!error && data) {
-      setTransactions((prev) => [...data, ...prev]);
-      if (data[0]?.tx_year) setSelectedYear(Number(data[0].tx_year));
+  const handleForgotPassword = async () => {
+    setAuthError(null);
+    setAuthMessage(null);
+
+    if (!email.trim()) {
+      setAuthError('Enter your email address above first, then click Forgot Password.');
+      return;
+    }
+
+    const redirectUrl =
+      currentOrg?.slug && currentOrg.slug !== 'default'
+        ? `${window.location.origin}/?office=${currentOrg.slug}`
+        : window.location.origin;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: redirectUrl,
+    });
+
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthMessage('Password reset email sent! Check your inbox for the reset link.');
     }
   };
 
-  const handleUpdateTransaction = async (id, updates) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (!error && data) {
-      setTransactions((prev) => prev.map((t) => (t.id === id ? data : t)));
-    }
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setMembership(null);
+    setActiveView('ledger');
   };
 
-  const handleBulkUpdateTransactions = async (ids, updates) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .in('id', ids)
-      .select();
-    if (!error && data) {
-      const updatedMap = new Map(data.map((d) => [d.id, d]));
-      setTransactions((prev) => prev.map((t) => updatedMap.get(t.id) || t));
-    }
-  };
-
-  const handleDeleteTransaction = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) setTransactions((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const handleBulkDeleteTransactions = async (ids) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('transactions').delete().in('id', ids);
-    if (!error) {
-      const idSet = new Set(ids);
-      setTransactions((prev) => prev.filter((t) => !idSet.has(t.id)));
-    }
-  };
-
-  const handleAddDraw = async (draw) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('owners_draws')
-      .insert([{ ...draw, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) {
-      setDraws((prev) => [data, ...prev]);
-      setSelectedYear(Number(data.draw_year));
-    }
-  };
-
-  const handleDeleteDraw = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('owners_draws').delete().eq('id', id);
-    if (!error) setDraws((prev) => prev.filter((d) => d.id !== id));
-  };
-
-  const handleAddVehicle = async (veh) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([{ ...veh, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) setVehicles((prev) => [...prev, data]);
-  };
-
-  const handleDeleteVehicle = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('vehicles').delete().eq('id', id);
-    if (!error) setVehicles((prev) => prev.filter((v) => v.id !== id));
-  };
-
-  const handleSaveCogs = async (record) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('cogs_records')
-      .upsert(
-        { ...record, user_id: effectiveUserId, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,tax_year' }
-      )
-      .select()
-      .single();
-    if (!error && data) {
-      setCogsList((prev) => [...prev.filter((c) => c.tax_year !== data.tax_year), data]);
-    }
-  };
-
-  const handleSaveHomeOffice = async (record) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('home_office_records')
-      .upsert(
-        { ...record, user_id: effectiveUserId, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,tax_year' }
-      )
-      .select()
-      .single();
-    if (!error && data) {
-      setHomeOfficeList((prev) => [...prev.filter((h) => h.tax_year !== data.tax_year), data]);
-    }
-  };
-
-  if (!isSupabaseConfigured) {
+  // Loading state
+  if (authLoading || (session && loadingMembership)) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-100">
-        <div className="max-w-lg bg-white p-8 rounded-2xl shadow border border-slate-200">
-          <h1 className="text-xl font-bold text-slate-900 mb-2">Database Connection Required</h1>
-          <p className="text-sm text-slate-600">
-            Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in Hostinger.
-          </p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
+        Loading workspace...
+      </div>
+    );
+  }
+
+  // Unauthenticated Login / Sign-Up Screen
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div
+            className="px-6 py-6 text-white text-center space-y-1.5"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {currentOrg?.logo_url ? (
+              <img
+                src={currentOrg.logo_url}
+                alt={currentOrg.brand_name}
+                className="h-10 mx-auto mb-2 object-contain"
+              />
+            ) : (
+              <Building2 className="w-8 h-8 mx-auto mb-1 opacity-90" />
+            )}
+            <h1 className="text-xl font-bold tracking-tight">{currentOrg.brand_name}</h1>
+            <p className="text-xs opacity-90">{currentOrg.tagline}</p>
+          </div>
+
+          <form onSubmit={handleAuthSubmit} className="p-6 space-y-4">
+            {authError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
+                {authError}
+              </div>
+            )}
+            {authMessage && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+                {authMessage}
+              </div>
+            )}
+
+            {isSignUp && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Jane Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="email"
+                  required
+                  placeholder="you@business.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">Password</label>
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-xs font-semibold text-emerald-700 hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submittingAuth}
+              className="w-full py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {submittingAuth ? 'Please wait...' : isSignUp ? 'Create Client Account' : 'Sign In'}
+            </button>
+
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setAuthError(null);
+                  setAuthMessage(null);
+                }}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
+              >
+                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     );
   }
 
-  if (loadingAuth) {
+  // Suspended Account Lockout Screen
+  if (membership && membership.is_active === false) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">Loading...</div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-red-200 shadow-sm text-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-red-600 mx-auto" />
+          <h2 className="text-xl font-bold text-slate-900">Account Suspended</h2>
+          <p className="text-sm text-slate-600">
+            Your access to <strong>{currentOrg.brand_name}</strong> has been paused by your tax office administrator.
+            {currentOrg.support_email && (
+              <>
+                {' '}
+                Please contact{' '}
+                <a
+                  href={`mailto:${currentOrg.support_email}`}
+                  className="font-semibold text-emerald-700 underline"
+                >
+                  {currentOrg.support_email}
+                </a>{' '}
+                for assistance.
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </button>
+        </div>
+      </div>
     );
   }
 
-  if (!session) {
-    return <Auth tenant={tenant} />;
-  }
-
-  const activeVehicles = vehicles.filter((v) => Number(v.tax_year) === Number(selectedYear));
-  const activeCogs = cogsList.find((c) => Number(c.tax_year) === Number(selectedYear));
-  const activeHomeOffice = homeOfficeList.find((h) => Number(h.tax_year) === Number(selectedYear));
-
-  const isAdmin = membership?.role === 'office_admin' || membership?.role === 'super_admin';
-  const accentColor = tenant?.primary_color || '#059669';
-  const logoSrc = tenant?.logo_url || '/logo.png';
-
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard & Reports', icon: LayoutDashboard },
-    { id: 'income', label: 'Income', icon: TrendingUp },
-    { id: 'expenses', label: 'Expenses', icon: TrendingDown },
-    { id: 'owners_draw', label: "Owner's Draw", icon: Wallet },
-    { id: 'vehicle', label: 'Vehicle Info', icon: Car },
-    { id: 'cogs', label: 'Cost of Goods Sold', icon: Package },
-    { id: 'home_office', label: 'Home Office', icon: Home },
-    { id: 'next_steps', label: 'Next Steps', icon: CheckSquare },
-    ...(isAdmin && !inspectedClient
-      ? [{ id: 'office_admin', label: 'Tax Office Admin', icon: Building2 }]
-      : []),
-  ];
+  const userRole = (membership?.role || 'client').toLowerCase();
+  const isAdmin = userRole === 'super_admin' || userRole === 'office_admin';
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Client Inspection Banner for Tax Office Admins */}
-      {inspectedClient && (
-        <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between no-print">
-          <span>
-            Viewing Client Report:{' '}
-            {inspectedClient.profile?.business_name ||
-              inspectedClient.full_name ||
-              inspectedClient.email}{' '}
-            (Read-Only Mode)
-          </span>
-          <button
-            onClick={handleExitClientInspection}
-            className="inline-flex items-center gap-1 bg-slate-900 text-white px-3 py-1 rounded-md text-xs"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Tax Office Admin
-          </button>
-        </div>
-      )}
-
-      {/* Top Navbar */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {!logoError && logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={tenant?.brand_name}
-                onError={() => setLogoError(true)}
-                className="h-9 w-auto object-contain rounded"
-              />
-            ) : (
-              <div style={{ backgroundColor: accentColor }} className="p-2 rounded-lg">
-                <BookOpen className="w-5 h-5 text-white" />
-              </div>
-            )}
-            <div>
-              <span className="font-bold text-base tracking-tight">
-                {tenant?.brand_name || 'Simple Bookkeeping System'}
-              </span>
-              {isAdmin && (
-                <span className="hidden sm:inline-block ml-2 px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-slate-800 text-emerald-400">
-                  {membership?.role === 'super_admin' ? 'Super Admin' : 'Office Admin'}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span className="hidden md:inline text-xs text-slate-400">{session.user.email}</span>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="inline-flex items-center gap-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
-            </button>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="bg-slate-800/80 border-t border-slate-700/60">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto gap-1 py-1.5">
-            {navItems.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={isActive ? { backgroundColor: accentColor } : undefined}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition ${
-                    isActive
-                      ? 'text-white shadow-sm'
-                      : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            tenant={tenant}
-            profile={profile}
-            onSaveProfile={handleSaveProfile}
-            transactions={transactions}
-            draws={draws}
-            vehicles={activeVehicles}
-            cogs={activeCogs}
-            homeOffice={activeHomeOffice}
-            selectedYear={selectedYear}
-            setSelectedYear={setSelectedYear}
-            availableYears={availableYears}
-          />
-        )}
-
-        {activeTab === 'income' && (
-          <TransactionLedger
-            type="income"
-            transactions={transactions}
-            selectedYear={selectedYear}
-            onAddTransaction={handleAddTransaction}
-            onBulkImportTransactions={handleBulkImportTransactions}
-            onUpdateTransaction={handleUpdateTransaction}
-            onBulkUpdateTransactions={handleBulkUpdateTransactions}
-            onDeleteTransaction={handleDeleteTransaction}
-            onBulkDeleteTransactions={handleBulkDeleteTransactions}
-          />
-        )}
-
-        {activeTab === 'expenses' && (
-          <TransactionLedger
-            type="expense"
-            transactions={transactions}
-            selectedYear={selectedYear}
-            onAddTransaction={handleAddTransaction}
-            onBulkImportTransactions={handleBulkImportTransactions}
-            onUpdateTransaction={handleUpdateTransaction}
-            onBulkUpdateTransactions={handleBulkUpdateTransactions}
-            onDeleteTransaction={handleDeleteTransaction}
-            onBulkDeleteTransactions={handleBulkDeleteTransactions}
-          />
-        )}
-
-        {activeTab === 'owners_draw' && (
-          <OwnersDrawTab
-            selectedYear={selectedYear}
-            draws={draws}
-            onAddDraw={handleAddDraw}
-            onDeleteDraw={handleDeleteDraw}
-          />
-        )}
-
-        {activeTab === 'vehicle' && (
-          <VehicleTab
-            selectedYear={selectedYear}
-            vehicles={activeVehicles}
-            onAddVehicle={handleAddVehicle}
-            onDeleteVehicle={handleDeleteVehicle}
-          />
-        )}
-
-        {activeTab === 'cogs' && (
-          <CogsTab selectedYear={selectedYear} cogs={activeCogs} onSaveCogs={handleSaveCogs} />
-        )}
-
-        {activeTab === 'home_office' && (
-          <HomeOfficeTab
-            selectedYear={selectedYear}
-            homeOffice={activeHomeOffice}
-            onSaveHomeOffice={handleSaveHomeOffice}
-          />
-        )}
-
-        {activeTab === 'next_steps' && (
-          <NextStepsTab
-            tenant={tenant}
-            selectedYear={selectedYear}
-            onNavigate={(tabId) => setActiveTab(tabId)}
-          />
-        )}
-
-        {activeTab === 'office_admin' && isAdmin && (
-          <OfficeAdminTab
-            tenant={tenant}
-            membership={membership}
-            onTenantUpdated={(updated) => setTenant(updated)}
-            onInspectClient={handleInspectClient}
-            selectedYear={selectedYear}
-          />
-        )}
-      </main>
-    </div>
-  );
-}
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Top White-Label Header */}
+      <header className="
