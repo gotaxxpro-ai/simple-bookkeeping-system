@@ -264,7 +264,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       setStatusMessage({ type: 'error', text: `Failed to update status: ${err.message}` });
     }
   };
-
   if (!isSuperAdmin && !isOfficeAdmin) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
@@ -437,4 +436,149 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                       <div className="font-medium text-slate-900">{member.full_name || 'Unnamed User'}</div>
                       <div className="text-xs text-slate-500">{member.email || member.user_id}</div>
                     </td>
-                    {isSuperAdmin && <td className="py-3.5 px-6 text-xs text-slate-600
+                    {isSuperAdmin && <td className="py-3.5 px-6 text-xs text-slate-600">{member.organizations?.brand_name || '—'}</td>}
+                    <td className="py-3.5 px-6">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${member.role === 'super_admin' ? 'bg-purple-100 text-purple-800' : member.role === 'office_admin' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-700'}`}>
+                        {member.role.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-6 text-xs text-slate-500">{member.created_at ? new Date(member.created_at).toLocaleDateString() : '—'}</td>
+                    <td className="py-3.5 px-6">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${member.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                        {member.is_active ? <><UserCheck className="w-3 h-3" /> Active</> : <><UserX className="w-3 h-3" /> Suspended</>}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-6 text-right">
+                      <div className="inline-flex items-center justify-end gap-2">
+                        <button type="button" onClick={() => setInspectingClient(member)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          View Books
+                        </button>
+                        {member.user_id !== membership?.user_id && member.role !== 'super_admin' && (isSuperAdmin || member.role === 'client') && (
+                          <button type="button" onClick={() => handleToggleMemberStatus(member)} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${member.is_active ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200' : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'}`}>
+                            {member.is_active ? 'Suspend' : 'Activate'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SECTION 3: SUPER ADMIN TAX OFFICE NETWORK MANAGEMENT */}
+      {isSuperAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-slate-800">Tax Office Network Management</h2>
+            </div>
+            <button type="button" onClick={() => setShowNewOfficeForm(!showNewOfficeForm)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg">
+              <Plus className="w-4 h-4" />
+              {showNewOfficeForm ? 'Cancel' : 'Add Tax Office'}
+            </button>
+          </div>
+
+          {showNewOfficeForm && (
+            <form onSubmit={handleCreateTaxOffice} className="p-6 bg-emerald-50/50 border-b border-slate-200 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">Provision New Tax Office & Admin Login</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Office Brand Name *</label>
+                  <input type="text" required placeholder="e.g., GoTaxx Atlanta" value={newOffice.brand_name} onChange={(e) => setNewOffice({ ...newOffice, brand_name: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">URL Slug * (used in ?office=slug)</label>
+                  <div className="flex items-center">
+                    <span className="px-3 py-2 bg-slate-100 border border-r-0 border-slate-300 rounded-l-lg text-xs text-slate-500">?office=</span>
+                    <input type="text" required placeholder="gotaxx-atlanta" value={newOffice.slug} onChange={(e) => setNewOffice({ ...newOffice, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-r-lg text-sm font-mono" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Office Admin Login Email *</label>
+                  <input type="email" required placeholder="owner@gotaxxatlanta.com" value={newOffice.admin_email} onChange={(e) => setNewOffice({ ...newOffice, admin_email: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Admin Password *</label>
+                  <input type="password" required minLength={6} placeholder="Minimum 6 characters" value={newOffice.admin_password} onChange={(e) => setNewOffice({ ...newOffice, admin_password: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Support Email (Optional)</label>
+                  <input type="email" placeholder="Defaults to admin email" value={newOffice.support_email} onChange={(e) => setNewOffice({ ...newOffice, support_email: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Brand Accent Color</label>
+                  <div className="flex items-center gap-3">
+                    <input type="color" value={newOffice.primary_color} onChange={(e) => setNewOffice({ ...newOffice, primary_color: e.target.value })} className="h-9 w-14 rounded border border-slate-300 cursor-pointer" />
+                    <span className="text-xs font-mono text-slate-600">{newOffice.primary_color}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 flex justify-end">
+                <button type="submit" disabled={creatingOffice} className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50">
+                  <Building2 className="w-4 h-4" />
+                  {creatingOffice ? 'Creating Office & Login...' : 'Create Tax Office'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
+                  <th className="py-3 px-6">Tax Office</th>
+                  <th className="py-3 px-6">Portal Link</th>
+                  <th className="py-3 px-6">Support</th>
+                  <th className="py-3 px-6">Status</th>
+                  <th className="py-3 px-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-sm">
+                {loadingOrgs ? (
+                  <tr><td colSpan="5" className="py-8 text-center text-slate-500">Loading tax offices...</td></tr>
+                ) : organizations.length === 0 ? (
+                  <tr><td colSpan="5" className="py-8 text-center text-slate-500">No tax offices found.</td></tr>
+                ) : (
+                  organizations.map((org) => (
+                    <tr key={org.id} className="hover:bg-slate-50">
+                      <td className="py-3.5 px-6 font-medium text-slate-900 flex items-center gap-2.5">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: org.primary_color || '#059669' }} />
+                        {org.brand_name}
+                      </td>
+                      <td className="py-3.5 px-6 font-mono text-xs text-slate-600">
+                        <a href={`${window.location.origin}/?office=${org.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-emerald-700 hover:underline">
+                          <Globe className="w-3.5 h-3.5" />
+                          /?office={org.slug}
+                        </a>
+                      </td>
+                      <td className="py-3.5 px-6 text-slate-600">
+                        {org.support_email ? <span className="inline-flex items-center gap-1.5 text-xs"><Mail className="w-3.5 h-3.5 text-slate-400" />{org.support_email}</span> : <span className="text-xs text-slate-400">—</span>}
+                      </td>
+                      <td className="py-3.5 px-6">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${org.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                          {org.is_active ? 'Active' : 'Suspended'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-6 text-right">
+                        {org.slug !== 'default' && (
+                          <button type="button" onClick={() => handleToggleOrgStatus(org)} className="text-xs font-medium text-slate-600 hover:text-slate-900 underline">
+                            {org.is_active ? 'Suspend' : 'Activate'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
