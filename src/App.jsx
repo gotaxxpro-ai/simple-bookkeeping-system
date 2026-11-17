@@ -148,6 +148,18 @@ export default function App() {
     return <Auth tenant={currentOrg} />;
   }
 
+const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+
+  // Inside your existing onAuthStateChange callback:
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+    setSession(currentSession);
+    if (event === 'PASSWORD_RECOVERY') {
+      setIsRecoveryMode(true);
+      setShowPasswordModal(true);
+    }
+  });
+  
   // Suspended Account Lockout Screen
   if (membership && membership.is_active === false) {
     return (
@@ -273,6 +285,47 @@ export default function App() {
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Sign Out</span>
             </button>
+            <button
+  type="button"
+  onClick={() => {
+    setIsRecoveryMode(false);
+    setShowPasswordModal(true);
+  }}
+  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+>
+  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+  Change Password
+</button>
+
+<ChangePasswordModal
+  isOpen={showPasswordModal}
+  onClose={() => {
+    setShowPasswordModal(false);
+    setIsRecoveryMode(false);
+  }}
+  primaryColor={primaryColor}
+  isRecoveryMode={isRecoveryMode}
+/>
+            const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setAuthError('Enter your email address above first, then click Forgot Password.');
+      return;
+    }
+
+    const redirectUrl = currentOrg?.slug && currentOrg.slug !== 'default'
+      ? `${window.location.origin}/?office=${currentOrg.slug}`
+      : window.location.origin;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: redirectUrl,
+    });
+
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthMessage('Password reset email sent! Check your inbox for the reset link.');
+    }
+  };
           </div>
         </div>
       </header>
