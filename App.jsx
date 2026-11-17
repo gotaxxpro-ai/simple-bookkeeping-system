@@ -272,18 +272,7 @@ export default function App() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-700">Password</label>
-                {!isSignUp && (
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    className="text-xs font-semibold text-emerald-700 hover:underline"
-                  >
-                    Forgot Password?
-                  </button>
-                )}
-              </div>
+              
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
