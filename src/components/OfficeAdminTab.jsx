@@ -713,7 +713,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                       </span>
                     </td>
                     <td className="py-3.5 px-6 text-right">
-                      <div className="inline-flex items-center justify-end gap-3">
+                      <div className="inline-flex items-center justify-end gap-2">
                         <button
                           type="button"
                           onClick={() => setInspectingClient(member)}
@@ -723,15 +723,21 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                           View Books
                         </button>
 
-                        {member.user_id !== membership?.user_id && member.role !== 'super_admin' && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleMemberStatus(member)}
-                            className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
-                          >
-                            {member.is_active ? 'Suspend' : 'Activate'}
-                          </button>
-                        )}
+                        {member.user_id !== membership?.user_id &&
+                          member.role !== 'super_admin' &&
+                          (isSuperAdmin || member.role === 'client') && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMemberStatus(member)}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                member.is_active
+                                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
+                              }`}
+                            >
+                              {member.is_active ? 'Suspend' : 'Activate'}
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>
