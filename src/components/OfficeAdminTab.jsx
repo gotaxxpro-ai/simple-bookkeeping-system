@@ -1,21 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Building2,
-  Plus,
-  Save,
-  CheckCircle2,
-  AlertCircle,
-  Globe,
-  Palette,
-  Mail,
-  ShieldCheck,
-  ExternalLink,
-  Users,
-  UserCheck,
-  UserX,
-  UserPlus,
-  BookOpen,
-  ArrowLeft,
+  Building2, Plus, Save, CheckCircle2, AlertCircle, Globe, Palette,
+  Mail, ShieldCheck, ExternalLink, Users, UserCheck, UserX, UserPlus,
+  BookOpen, ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import BookkeepingLedger from './BookkeepingLedger';
@@ -24,61 +11,35 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const isSuperAdmin = membership?.role === 'super_admin';
   const isOfficeAdmin = membership?.role === 'office_admin';
 
-  // Selected client for read-only Schedule C ledger inspection
   const [inspectingClient, setInspectingClient] = useState(null);
-
-  // Resolved organization for the active admin
   const [resolvedOrg, setResolvedOrg] = useState(null);
   const [loadingOrgDetails, setLoadingOrgDetails] = useState(true);
 
-  // Client & member list for the organization
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
 
-  // Add Client form state (for office_admin and super_admin)
   const [showAddClientForm, setShowAddClientForm] = useState(false);
-  const [newClient, setNewClient] = useState({
-    full_name: '',
-    email: '',
-    password: '',
-    organization_id: '',
-  });
+  const [newClient, setNewClient] = useState({ full_name: '', email: '', password: '', organization_id: '' });
   const [creatingClient, setCreatingClient] = useState(false);
 
-  // List of all organizations (for super_admin)
   const [organizations, setOrganizations] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
 
-  // Branding editor state
   const [brandForm, setBrandForm] = useState({
-    brand_name: '',
-    tagline: '',
-    primary_color: '#059669',
-    logo_url: '',
-    support_email: '',
+    brand_name: '', tagline: '', primary_color: '#059669', logo_url: '', support_email: '',
   });
   const [savingBrand, setSavingBrand] = useState(false);
 
-  // New Tax Office creation state (super_admin)
   const [showNewOfficeForm, setShowNewOfficeForm] = useState(false);
   const [newOffice, setNewOffice] = useState({
-    slug: '',
-    brand_name: '',
-    tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
-    primary_color: '#059669',
-    support_email: '',
-    admin_email: '',
-    admin_password: '',
+    slug: '', brand_name: '', tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
+    primary_color: '#059669', support_email: '', admin_email: '', admin_password: '',
   });
   const [creatingOffice, setCreatingOffice] = useState(false);
-
-  // Feedback banner
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // 1. Resolve database organization record
   useEffect(() => {
     let isMounted = true;
-
     async function loadAdminOrganization() {
       setLoadingOrgDetails(true);
       try {
@@ -95,14 +56,9 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           }
           return;
         }
-
         if (membership?.organization_id) {
           const { data, error } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('id', membership.organization_id)
-            .maybeSingle();
-
+            .from('organizations').select('*').eq('id', membership.organization_id).maybeSingle();
           if (!error && data && isMounted) {
             setResolvedOrg(data);
             setBrandForm({
@@ -118,43 +74,22 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         if (isMounted) setLoadingOrgDetails(false);
       }
     }
-
     loadAdminOrganization();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [currentOrg, membership?.organization_id]);
 
-  // 2. Fetch client & staff list (and all organizations if super_admin)
   useEffect(() => {
-    if (isSuperAdmin || isOfficeAdmin) {
-      fetchMembers();
-    }
-    if (isSuperAdmin) {
-      fetchAllOrganizations();
-    }
+    if (isSuperAdmin || isOfficeAdmin) fetchMembers();
+    if (isSuperAdmin) fetchAllOrganizations();
   }, [isSuperAdmin, isOfficeAdmin, membership?.organization_id]);
 
   const fetchMembers = async () => {
     if (!membership?.role) return;
     setLoadingMembers(true);
-
     try {
       let query = supabase
         .from('user_memberships')
-        .select(`
-          user_id,
-          organization_id,
-          role,
-          is_active,
-          email,
-          full_name,
-          created_at,
-          organizations (
-            slug,
-            brand_name
-          )
-        `)
+        .select('user_id, organization_id, role, is_active, email, full_name, created_at, organizations(slug, brand_name)')
         .order('created_at', { ascending: false });
 
       if (!isSuperAdmin) {
@@ -163,9 +98,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           setLoadingMembers(false);
           return;
         }
-        query = query
-          .eq('organization_id', membership.organization_id)
-          .neq('role', 'super_admin');
+        query = query.eq('organization_id', membership.organization_id).neq('role', 'super_admin');
       }
 
       const { data, error } = await query;
@@ -182,10 +115,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     setLoadingOrgs(true);
     try {
       const { data, error } = await supabase
-        .from('organizations')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+        .from('organizations').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setOrganizations(data || []);
     } catch (err) {
@@ -195,12 +125,10 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Create a new client account under this tax office
   const handleCreateClient = async (e) => {
     e.preventDefault();
     setCreatingClient(true);
     setStatusMessage(null);
-
     try {
       const targetOrgId = isSuperAdmin
         ? newClient.organization_id || resolvedOrg?.id || membership?.organization_id
@@ -214,21 +142,11 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           organization_id: targetOrgId,
         },
       });
-
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
-      setStatusMessage({
-        type: 'success',
-        text: `Client account created for ${data.client.full_name} (${data.client.email}). They can log in immediately.`,
-      });
-
-      setNewClient({
-        full_name: '',
-        email: '',
-        password: '',
-        organization_id: '',
-      });
+      setStatusMessage({ type: 'success', text: `Client account created for ${data.client.full_name} (${data.client.email}).` });
+      setNewClient({ full_name: '', email: '', password: '', organization_id: '' });
       setShowAddClientForm(false);
       fetchMembers();
     } catch (err) {
@@ -238,17 +156,14 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Update white-label branding
   const handleSaveBranding = async (e) => {
     e.preventDefault();
     if (!resolvedOrg?.id || resolvedOrg.id === 'default') {
       setStatusMessage({ type: 'error', text: 'No database organization linked to this account.' });
       return;
     }
-
     setSavingBrand(true);
     setStatusMessage(null);
-
     try {
       const { data, error } = await supabase
         .from('organizations')
@@ -262,7 +177,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         .eq('id', resolvedOrg.id)
         .select()
         .single();
-
       if (error) throw error;
 
       setResolvedOrg(data);
@@ -276,18 +190,15 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Single clean implementation: Toggle client active/suspended status via secure RPC
   const handleToggleMemberStatus = async (member) => {
     if (member.user_id === membership?.user_id) {
       setStatusMessage({ type: 'error', text: 'You cannot suspend your own administrator account.' });
       return;
     }
-
     try {
       const { data: newStatus, error } = await supabase.rpc('toggle_client_active_status', {
         target_user_id: member.user_id,
       });
-
       if (error) throw error;
 
       setMembers((prev) =>
@@ -295,21 +206,17 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       );
       setStatusMessage({
         type: 'success',
-        text: `Account for ${member.full_name || member.email} is now ${
-          newStatus ? 'Active' : 'Suspended'
-        }.`,
+        text: `Account for ${member.full_name || member.email} is now ${newStatus ? 'Active' : 'Suspended'}.`,
       });
     } catch (err) {
       setStatusMessage({ type: 'error', text: `Failed to update user status: ${err.message}` });
     }
   };
 
-  // Create a new tax office + Auth admin user via Edge Function (super_admin)
   const handleCreateTaxOffice = async (e) => {
     e.preventDefault();
     setCreatingOffice(true);
     setStatusMessage(null);
-
     try {
       const { data, error } = await supabase.functions.invoke('create-tax-office', {
         body: {
@@ -322,7 +229,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           admin_password: newOffice.admin_password,
         },
       });
-
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
 
@@ -330,15 +236,9 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         type: 'success',
         text: `Tax office "${data.organization.brand_name}" and admin login (${data.admin_user.email}) created!`,
       });
-
       setNewOffice({
-        slug: '',
-        brand_name: '',
-        tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
-        primary_color: '#059669',
-        support_email: '',
-        admin_email: '',
-        admin_password: '',
+        slug: '', brand_name: '', tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
+        primary_color: '#059669', support_email: '', admin_email: '', admin_password: '',
       });
       setShowNewOfficeForm(false);
       fetchAllOrganizations();
@@ -350,5 +250,191 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  // Toggle active/suspended status of an organization (super_admin)
-  const handleToggleOrgStatus = async (org
+  const handleToggleOrgStatus = async (org) => {
+    try {
+      const { error } = await supabase
+        .from('organizations').update({ is_active: !org.is_active }).eq('id', org.id);
+      if (error) throw error;
+      fetchAllOrganizations();
+      setStatusMessage({
+        type: 'success',
+        text: `${org.brand_name} is now ${!org.is_active ? 'Active' : 'Suspended'}.`,
+      });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: `Failed to update status: ${err.message}` });
+    }
+  };
+
+  if (!isSuperAdmin && !isOfficeAdmin) {
+    return (
+      <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
+        Access denied. Administrator privileges are required to view this section.
+      </div>
+    );
+  }
+
+  if (inspectingClient) {
+    const clientLabel = inspectingClient.full_name || inspectingClient.email || 'Client';
+    return (
+      <div className="space-y-6 max-w-6xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-2xl border border-slate-200 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setInspectingClient(null)}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to {isSuperAdmin ? 'Platform & Office Admin' : 'Office Clients'}
+          </button>
+          <div className="text-xs text-slate-500">
+            Client Email: <span className="font-mono text-slate-700">{inspectingClient.email || '—'}</span>
+          </div>
+        </div>
+        <BookkeepingLedger
+          targetUserId={inspectingClient.user_id}
+          targetUserName={clientLabel}
+          readOnly={true}
+          primaryColor={resolvedOrg?.primary_color || currentOrg?.primary_color || '#059669'}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto">
+      {statusMessage && (
+        <div className={`flex items-center gap-3 p-4 rounded-xl border ${statusMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+          {statusMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" /> : <AlertCircle className="w-5 h-5 shrink-0 text-red-600" />}
+          <span className="text-sm font-medium">{statusMessage.text}</span>
+        </div>
+      )}
+
+      {/* SECTION 1: WHITE-LABEL BRANDING */}
+      {loadingOrgDetails ? (
+        <div className="p-6 bg-white rounded-2xl border border-slate-200 text-sm text-slate-500">Loading tax office settings...</div>
+      ) : resolvedOrg ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Palette className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-slate-800">White-Label Branding ({resolvedOrg.slug})</h2>
+            </div>
+            <a href={`${window.location.origin}/?office=${resolvedOrg.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800">
+              Client Signup & Portal Link <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <form onSubmit={handleSaveBranding} className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Brand / Tax Office Name</label>
+                <input type="text" required value={brandForm.brand_name} onChange={(e) => setBrandForm({ ...brandForm, brand_name: e.target.value })} className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Support Email</label>
+                <input type="email" value={brandForm.support_email} onChange={(e) => setBrandForm({ ...brandForm, support_email: e.target.value })} placeholder="support@yourtaxoffice.com" className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Portal Tagline</label>
+                <input type="text" value={brandForm.tagline} onChange={(e) => setBrandForm({ ...brandForm, tagline: e.target.value })} className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Logo Image URL (Optional)</label>
+                <input type="url" value={brandForm.logo_url} onChange={(e) => setBrandForm({ ...brandForm, logo_url: e.target.value })} placeholder="https://..." className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Brand Primary Color</label>
+                <div className="flex items-center gap-3">
+                  <input type="color" value={brandForm.primary_color} onChange={(e) => setBrandForm({ ...brandForm, primary_color: e.target.value })} className="h-9 w-14 rounded border border-slate-300 cursor-pointer" />
+                  <input type="text" value={brandForm.primary_color} onChange={(e) => setBrandForm({ ...brandForm, primary_color: e.target.value })} className="w-32 px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono" />
+                </div>
+              </div>
+            </div>
+            <div className="pt-2 flex justify-end">
+              <button type="submit" disabled={savingBrand} className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50">
+                <Save className="w-4 h-4" />
+                {savingBrand ? 'Saving...' : 'Save Branding'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm">
+          Your administrator account is not linked to a specific organization yet.
+        </div>
+      )}
+
+      {/* SECTION 2: OFFICE CLIENT & MEMBER DIRECTORY */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Users className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-lg font-semibold text-slate-800">{isSuperAdmin ? 'All Users & Clients' : 'Office Clients & Staff'}</h2>
+            <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">{members.length}</span>
+          </div>
+          <button type="button" onClick={() => setShowAddClientForm(!showAddClientForm)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm">
+            <UserPlus className="w-4 h-4" />
+            {showAddClientForm ? 'Cancel' : 'Add Client'}
+          </button>
+        </div>
+
+        {showAddClientForm && (
+          <form onSubmit={handleCreateClient} className="p-6 bg-emerald-50/50 border-b border-slate-200 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider">Create Client Bookkeeping Account</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Client Full Name *</label>
+                <input type="text" required placeholder="Jane Doe" value={newClient.full_name} onChange={(e) => setNewClient({ ...newClient, full_name: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Client Email *</label>
+                <input type="email" required placeholder="jane@clientbusiness.com" value={newClient.email} onChange={(e) => setNewClient({ ...newClient, email: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password *</label>
+                <input type="password" required minLength={6} placeholder="Minimum 6 characters" value={newClient.password} onChange={(e) => setNewClient({ ...newClient, password: e.target.value })} className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm" />
+              </div>
+              {isSuperAdmin && organizations.length > 0 && (
+                <div className="md:col-span-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Assign to Tax Office</label>
+                  <select value={newClient.organization_id || resolvedOrg?.id || ''} onChange={(e) => setNewClient({ ...newClient, organization_id: e.target.value })} className="w-full md:w-1/2 px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm">
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>{org.brand_name} ({org.slug})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="pt-2 flex justify-end">
+              <button type="submit" disabled={creatingClient} className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50">
+                <UserPlus className="w-4 h-4" />
+                {creatingClient ? 'Creating Client Account...' : 'Create Client Login'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-500 uppercase">
+                <th className="py-3 px-6">Client / User</th>
+                {isSuperAdmin && <th className="py-3 px-6">Tax Office</th>}
+                <th className="py-3 px-6">Role</th>
+                <th className="py-3 px-6">Joined</th>
+                <th className="py-3 px-6">Status</th>
+                <th className="py-3 px-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-sm">
+              {loadingMembers ? (
+                <tr><td colSpan={isSuperAdmin ? 6 : 5} className="py-8 text-center text-slate-500">Loading client directory...</td></tr>
+              ) : members.length === 0 ? (
+                <tr><td colSpan={isSuperAdmin ? 6 : 5} className="py-8 text-center text-slate-500">No clients registered under this office yet.</td></tr>
+              ) : (
+                members.map((member) => (
+                  <tr key={member.user_id} className="hover:bg-slate-50">
+                    <td className="py-3.5 px-6">
+                      <div className="font-medium text-slate-900">{member.full_name || 'Unnamed User'}</div>
+                      <div className="text-xs text-slate-500">{member.email || member.user_id}</div>
+                    </td>
+                    {isSuperAdmin && <td className="py-3.5 px-6 text-xs text-slate-600
