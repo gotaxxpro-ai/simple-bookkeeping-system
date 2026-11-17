@@ -233,4 +233,38 @@ export default function BookkeepingLedger({
         { keywords: ['consult', 'advisory', 'retainer', 'strategy'], name: 'Consulting Fees' },
         { keywords: ['subscription', 'membership', 'monthly plan', 'saas'], name: 'Subscription Income' },
         { keywords: ['commission', 'affiliate', 'referral'], name: 'Commissions' },
-        { keywords: ['royalty', 'royalties', 'ascap', 'bmi', 'acx', '
+        { keywords: ['royalty', 'royalties', 'ascap', 'bmi', 'acx', 'ingram'], name: 'Royalty Income' },
+        { keywords: ['rental', 'lease income'], name: 'Rental Income' },
+        { keywords: ['service', 'labor', 'client payment', 'invoice'], name: 'Service Revenue' },
+        { keywords: ['project', 'milestone', 'contract'], name: 'Project-Based Income' },
+        { keywords: ['license', 'licensing'], name: 'Licensing Fees' },
+        { keywords: ['interest', 'rebate', 'grant', 'dividend'], name: 'Non-Operating Income' },
+      ];
+      for (const rule of incomeRules) {
+        if (rule.keywords.some((kw) => text.includes(kw))) {
+          const matched = matchingTypeCats.find((c) => c.name === rule.name);
+          if (matched) return matched.id;
+        }
+      }
+      const defaultSales =
+        matchingTypeCats.find((c) => c.name === 'Sales Revenue') ||
+        matchingTypeCats.find((c) => c.line_number === 'Line 1');
+      return defaultSales ? defaultSales.id : matchingTypeCats[0].id;
+    }
+
+    const expenseRules = [
+      { keywords: ['facebook ads', 'meta ads', 'google ads', 'vistaprint', 'mailchimp'], line: 'Line 8' },
+      { keywords: ['shell', 'chevron', 'exxon', 'bp ', 'autozone', 'oreilly', 'jiffy lube', 'parking'], line: 'Line 9' },
+      { keywords: ['stripe fee', 'square fee', 'paypal fee', 'merchant fee'], line: 'Line 10' },
+      { keywords: ['upwork', 'fiverr', 'contractor', 'subcontractor'], line: 'Line 11' },
+      { keywords: ['geico', 'state farm', 'progressive', 'hiscox', 'liability ins'], line: 'Line 15' },
+      { keywords: ['attorney', 'legal', 'cpa', 'tax prep', 'accounting', 'quickbooks'], line: 'Line 17' },
+      { keywords: ['staples', 'office depot', 'adobe', 'microsoft', 'zoom', 'canva', 'hostinger', 'supabase'], line: 'Line 18' },
+      { keywords: ['wework', 'regus', 'storage', 'rent', 'lease'], line: 'Line 20b' },
+      { keywords: ['home depot', 'lowes', 'repair', 'maintenance'], line: 'Line 21' },
+      { keywords: ['uline', 'amazon', 'walmart', 'target', 'supplies'], line: 'Line 22' },
+      { keywords: ['secretary of state', 'license', 'permit', 'annual registration'], line: 'Line 23' },
+      { keywords: ['delta', 'american airlines', 'united', 'marriott', 'hilton', 'airbnb', 'uber', 'lyft'], line: 'Line 24a' },
+      { keywords: ['restaurant', 'cafe', 'coffee', 'starbucks', 'chick-fil-a', 'chipotle', 'grill', 'bistro'], line: 'Line 24b' },
+      { keywords: ['comcast', 'xfinity', 'verizon', 'at&t', 't-mobile', 'internet', 'electric', 'water'], line: 'Line 25' },
+    ];
