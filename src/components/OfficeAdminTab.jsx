@@ -158,14 +158,22 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
-  const handleCreateClient = async (e) => {
+const handleCreateClient = async (e) => {
     e.preventDefault();
     setCreatingClient(true);
     setStatusMessage(null);
     try {
       const targetOrgId = isSuperAdmin
-        ? newClient.organization_id || resolvedOrg?.id || membership?.organization_id
-        : resolvedOrg?.id || membership?.organization_id;
+        ? newClient.organization_id ||
+          resolvedOrg?.id ||
+          membership?.organization_id ||
+          organizations[0]?.id ||
+          ''
+        : resolvedOrg?.id || membership?.organization_id || '';
+
+      if (!targetOrgId) {
+        throw new Error('No tax office organization selected or linked to your account.');
+      }
 
       const { data, error } = await supabase.functions.invoke('create-office-client', {
         body: {
@@ -175,7 +183,20 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           organization_id: targetOrgId,
         },
       });
-      if (error) throw new Error(error.message);
+
+      if (error) {
+        let detailedMsg = error.message;
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const errBody = await error.context.json();
+            if (errBody?.error) detailedMsg = errBody.error;
+          }
+        } catch (_) {
+          // Fall back to generic error message if body isn't JSON
+        }
+        throw new Error(detailedMsg);
+      }
+
       if (data?.error) throw new Error(data.error);
 
       setStatusMessage({
@@ -189,6 +210,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       setStatusMessage({ type: 'error', text: err.message });
     } finally {
       setCreatingClient(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
