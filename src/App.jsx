@@ -1,571 +1,322 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  BookOpen,
+  ShieldCheck,
+  LogOut,
+  Building2,
+  AlertOctagon,
+  Loader2,
+} from 'lucide-react';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { resolveTenantOrganization, DEFAULT_BRAND } from './lib/tenant';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage';
-import Dashboard from './components/Dashboard';
-import TransactionLedger from './components/TransactionLedger';
-import OwnersDrawTab from './components/OwnersDrawTab';
-import VehicleTab from './components/VehicleTab';
-import CogsTab from './components/CogsTab';
-import HomeOfficeTab from './components/HomeOfficeTab';
-import NextStepsTab from './components/NextStepsTab';
+import BookkeepingLedger from './components/BookkeepingLedger';
 import OfficeAdminTab from './components/OfficeAdminTab';
-import {
-  LayoutDashboard,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  Car,
-  Package,
-  Home,
-  CheckSquare,
-  Building2,
-  LogOut,
-  BookOpen,
-  ArrowLeft,
-} from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [authScreenMode, setAuthScreenMode] = useState(null); // null = LandingPage, 'login' | 'signup' = Auth
-  const [logoError, setLogoError] = useState(false);
-
-  // Multi-tenant white-label state
-  const [tenant, setTenant] = useState(DEFAULT_BRAND);
   const [membership, setMembership] = useState(null);
-  const [inspectedClient, setInspectedClient] = useState(null); // When an Office Admin opens a client's report
+  const [currentOrg, setCurrentOrg] = useState(DEFAULT_BRAND);
+  const [activeTab, setActiveTab] = useState('ledger'); // 'ledger' | 'admin'
+  const [initializing, setInitializing] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  // Load user membership & resolve white-label organization branding
+  const loadSessionContext = useCallback(async (currentSession) => {
+    setAuthError(null);
 
-  const [profile, setProfile] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [draws, setDraws] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-  const [cogsList, setCogsList] = useState([]);
-  const [homeOfficeList, setHomeOfficeList] = useState([]);
-
-  // Resolve white-label branding immediately on load (even before login)
-  useEffect(() => {
-    resolveTenantOrganization(null).then((org) => {
-      if (org) {
-        setTenant(org);
-        document.title = org.brand_name || 'Simple Bookkeeping System';
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setLoadingAuth(false);
+    if (!currentSession?.user) {
+      setMembership(null);
+      const publicOrg = await resolveTenantOrganization(null);
+      setCurrentOrg(publicOrg);
+      setActiveTab('ledger');
+      setInitializing(false);
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingAuth(false);
+    try {
+      // 1. Fetch user's role, organization_id, and active status
+      const { data: memberData, error: memberError } = await supabase
+        .from('user_memberships')
+        .select('user_id, organization_id, role, is_active, email, full_name')
+        .eq('user_id', currentSession.user.id)
+        .maybeSingle();
+
+      if (memberError) {
+        throw new Error(`Could not verify account membership: ${memberError.message}`);
+      }
+
+      // Fallback default client membership if trigger hasn't populated yet
+      const activeMembership = memberData || {
+        user_id: currentSession.user.id,
+        organization_id: null,
+        role: 'client',
+        is_active: true,
+        email: currentSession.user.email,
+        full_name: currentSession.user.user_metadata?.full_name || currentSession.user.email,
+      };
+
+      setMembership(activeMembership);
+
+      // 2. Resolve tenant organization (uses ?office=slug if present, otherwise user's organization_id)
+      const resolvedOrg = await resolveTenantOrganization(activeMembership.organization_id);
+      setCurrentOrg(resolvedOrg);
+
+      // 3. Default office_admin / super_admin users to the Admin tab if desired, or keep ledger accessible
+      if (['office_admin', 'super_admin'].includes(activeMembership.role)) {
+        setActiveTab('admin');
+      } else {
+        setActiveTab('ledger');
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setInitializing(false);
+    }
+  }, []);
+
+  // Initialize Supabase session listener on mount
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setInitializing(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (!isMounted) return;
+      setSession(initialSession);
+      loadSessionContext(initialSession);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((_event, updatedSession) => {
+      if (!isMounted) return;
+      setSession(updatedSession);
+      loadSessionContext(updatedSession);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadSessionContext]);
 
+  // Update browser document title to match active white-label brand
   useEffect(() => {
-    if (session?.user) {
-      initializeUserAndTenant(session.user);
-    } else {
-      setMembership(null);
-      setInspectedClient(null);
+    if (currentOrg?.brand_name) {
+      document.title = currentOrg.brand_name;
     }
-  }, [session]);
+  }, [currentOrg?.brand_name]);
 
-  const initializeUserAndTenant = async (user) => {
-    const resolvedOrg = await resolveTenantOrganization(user.id);
-    if (resolvedOrg) {
-      setTenant(resolvedOrg);
-      document.title = resolvedOrg.brand_name || 'Simple Bookkeeping System';
-    }
-
-    // Ensure user_memberships row exists (handles users who confirmed via email link)
-    let { data: mem } = await supabase
-      .from('user_memberships')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (!mem && resolvedOrg?.id) {
-      const superEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || '').toLowerCase();
-      const isOrgOwner =
-        resolvedOrg?.support_email &&
-        (user.email || '').toLowerCase() === resolvedOrg.support_email.toLowerCase();
-      const role =
-        (user.email || '').toLowerCase() === superEmail
-          ? 'super_admin'
-          : isOrgOwner
-          ? 'office_admin'
-          : 'client';
-
-      const { data: createdMem } = await supabase
-        .from('user_memberships')
-        .upsert({
-          user_id: user.id,
-          organization_id: user.user_metadata?.organization_id || resolvedOrg.id,
-          role,
-          full_name: user.user_metadata?.full_name || '',
-          email: user.email || '',
-        })
-        .select()
-        .single();
-      mem = createdMem;
-    }
-
-    setMembership(mem);
-    await fetchUserBookkeepingData(user.id);
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
   };
 
-  const fetchUserBookkeepingData = async (targetUserId) => {
-    const [profRes, txRes, drawRes, vehRes, cogsRes, hoRes] = await Promise.all([
-      supabase.from('business_profiles').select('*').eq('user_id', targetUserId).maybeSingle(),
-      supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('tx_date', { ascending: false }),
-      supabase
-        .from('owners_draws')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('draw_date', { ascending: false }),
-      supabase
-        .from('vehicles')
-        .select('*')
-        .eq('user_id', targetUserId)
-        .order('created_at', { ascending: true }),
-      supabase.from('cogs_records').select('*').eq('user_id', targetUserId),
-      supabase.from('home_office_records').select('*').eq('user_id', targetUserId),
-    ]);
-
-    setProfile(profRes.data || null);
-    setTransactions(txRes.data || []);
-    setDraws(drawRes.data || []);
-    setVehicles(vehRes.data || []);
-    setCogsList(cogsRes.data || []);
-    setHomeOfficeList(hoRes.data || []);
-  };
-
-  const handleInspectClient = async (clientMembership) => {
-    setInspectedClient(clientMembership);
-    await fetchUserBookkeepingData(clientMembership.user_id);
-    setActiveTab('dashboard');
-  };
-
-  const handleExitClientInspection = async () => {
-    setInspectedClient(null);
-    await fetchUserBookkeepingData(session.user.id);
-    setActiveTab('office_admin');
-  };
-
-  // Compute dynamic year selector options
-  const availableYears = useMemo(() => {
-    const yrs = new Set([currentYear - 1, currentYear, currentYear + 1, 2024, 2025, 2026]);
-    transactions.forEach((t) => yrs.add(Number(t.tx_year)));
-    draws.forEach((d) => yrs.add(Number(d.draw_year)));
-    vehicles.forEach((v) => yrs.add(Number(v.tax_year)));
-    return Array.from(yrs).sort((a, b) => b - a);
-  }, [transactions, draws, vehicles, currentYear]);
-
-  // CRUD Handlers (Disabled when an Office Admin is inspecting a client's read-only report)
-  const effectiveUserId = inspectedClient ? inspectedClient.user_id : session?.user?.id;
-
-  const handleSaveProfile = async (updates) => {
-    if (inspectedClient) return;
-    const payload = { user_id: effectiveUserId, ...updates, updated_at: new Date().toISOString() };
-    const { data, error } = await supabase
-      .from('business_profiles')
-      .upsert(payload)
-      .select()
-      .single();
-    if (!error && data) setProfile(data);
-  };
-
-  const handleAddTransaction = async (tx) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([{ ...tx, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) {
-      setTransactions((prev) => [data, ...prev]);
-      setSelectedYear(Number(data.tx_year));
-    }
-  };
-
-  const handleBulkImportTransactions = async (rows) => {
-    if (inspectedClient) return;
-    const payload = rows.map((r) => ({ ...r, user_id: effectiveUserId }));
-    const { data, error } = await supabase.from('transactions').insert(payload).select();
-    if (!error && data) {
-      setTransactions((prev) => [...data, ...prev]);
-      if (data[0]?.tx_year) setSelectedYear(Number(data[0].tx_year));
-    }
-  };
-
-  const handleUpdateTransaction = async (id, updates) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-    if (!error && data) {
-      setTransactions((prev) => prev.map((t) => (t.id === id ? data : t)));
-    }
-  };
-
-  const handleBulkUpdateTransactions = async (ids, updates) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .update(updates)
-      .in('id', ids)
-      .select();
-    if (!error && data) {
-      const updatedMap = new Map(data.map((d) => [d.id, d]));
-      setTransactions((prev) => prev.map((t) => updatedMap.get(t.id) || t));
-    }
-  };
-
-  const handleDeleteTransaction = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) setTransactions((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const handleBulkDeleteTransactions = async (ids) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('transactions').delete().in('id', ids);
-    if (!error) {
-      const idSet = new Set(ids);
-      setTransactions((prev) => prev.filter((t) => !idSet.has(t.id)));
-    }
-  };
-
-  const handleAddDraw = async (draw) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('owners_draws')
-      .insert([{ ...draw, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) {
-      setDraws((prev) => [data, ...prev]);
-      setSelectedYear(Number(data.draw_year));
-    }
-  };
-
-  const handleDeleteDraw = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('owners_draws').delete().eq('id', id);
-    if (!error) setDraws((prev) => prev.filter((d) => d.id !== id));
-  };
-
-  const handleAddVehicle = async (veh) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([{ ...veh, user_id: effectiveUserId }])
-      .select()
-      .single();
-    if (!error && data) setVehicles((prev) => [...prev, data]);
-  };
-
-  const handleDeleteVehicle = async (id) => {
-    if (inspectedClient) return;
-    const { error } = await supabase.from('vehicles').delete().eq('id', id);
-    if (!error) setVehicles((prev) => prev.filter((v) => v.id !== id));
-  };
-
-  const handleSaveCogs = async (record) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('cogs_records')
-      .upsert(
-        { ...record, user_id: effectiveUserId, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,tax_year' }
-      )
-      .select()
-      .single();
-    if (!error && data) {
-      setCogsList((prev) => [...prev.filter((c) => c.tax_year !== data.tax_year), data]);
-    }
-  };
-
-  const handleSaveHomeOffice = async (record) => {
-    if (inspectedClient) return;
-    const { data, error } = await supabase
-      .from('home_office_records')
-      .upsert(
-        { ...record, user_id: effectiveUserId, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,tax_year' }
-      )
-      .select()
-      .single();
-    if (!error && data) {
-      setHomeOfficeList((prev) => [...prev.filter((h) => h.tax_year !== data.tax_year), data]);
-    }
-  };
-
+  // Guard: Missing .env keys
   if (!isSupabaseConfigured) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-100">
-        <div className="max-w-lg bg-white p-8 rounded-2xl shadow border border-slate-200">
-          <h1 className="text-xl font-bold text-slate-900 mb-2">Database Connection Required</h1>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-6 rounded-2xl border border-red-200 shadow-sm space-y-3">
+          <div className="flex items-center gap-2 text-red-700 font-bold">
+            <AlertOctagon className="w-5 h-5" />
+            <span>Supabase Configuration Missing</span>
+          </div>
           <p className="text-sm text-slate-600">
-            Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in Hostinger.
+            Verify that <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> are set in your local <code>.env</code> file and Hostinger environment variables, then rebuild.
           </p>
         </div>
       </div>
     );
   }
 
-  if (loadingAuth) {
+  // Loading spinner while checking session & branding
+  if (initializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">Loading...</div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-3 text-slate-600">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+        <p className="text-sm font-medium">Loading portal...</p>
+      </div>
     );
   }
 
+  // Unauthenticated view -> Render white-label Auth screen
   if (!session) {
-    if (!authScreenMode) {
-      return (
-        <LandingPage
-          tenant={tenant}
-          onOpenAuth={(mode) => setAuthScreenMode(mode)}
-        />
-      );
-    }
-    return (
-      <Auth
-        tenant={tenant}
-        initialMode={authScreenMode}
-        onBackHome={() => setAuthScreenMode(null)}
-      />
-    );
+    return <Auth tenant={currentOrg} />;
   }
 
-  const activeVehicles = vehicles.filter((v) => Number(v.tax_year) === Number(selectedYear));
-  const activeCogs = cogsList.find((c) => Number(c.tax_year) === Number(selectedYear));
-  const activeHomeOffice = homeOfficeList.find((h) => Number(h.tax_year) === Number(selectedYear));
-
-  const isAdmin = membership?.role === 'office_admin' || membership?.role === 'super_admin';
-  const accentColor = tenant?.primary_color || '#059669';
-  const logoSrc = tenant?.logo_url || '/logo.png';
-
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard & Reports', icon: LayoutDashboard },
-    { id: 'income', label: 'Income', icon: TrendingUp },
-    { id: 'expenses', label: 'Expenses', icon: TrendingDown },
-    { id: 'owners_draw', label: "Owner's Draw", icon: Wallet },
-    { id: 'vehicle', label: 'Vehicle Info', icon: Car },
-    { id: 'cogs', label: 'Cost of Goods Sold', icon: Package },
-    { id: 'home_office', label: 'Home Office', icon: Home },
-    { id: 'next_steps', label: 'Next Steps', icon: CheckSquare },
-    ...(isAdmin && !inspectedClient
-      ? [{ id: 'office_admin', label: 'Tax Office Admin', icon: Building2 }]
-      : []),
-  ];
-
-  return (
-    <div className="min-h-screen flex flex-col">
-      {/* Client Inspection Banner for Tax Office Admins */}
-      {inspectedClient && (
-        <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between no-print">
-          <span>
-            Viewing Client Report:{' '}
-            {inspectedClient.profile?.business_name ||
-              inspectedClient.full_name ||
-              inspectedClient.email}{' '}
-            (Read-Only Mode)
-          </span>
+  // Suspended Account Lockout Screen
+  if (membership && membership.is_active === false) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-red-200 shadow-sm text-center space-y-4">
+          <div className="mx-auto w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+            <AlertOctagon className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Account Suspended</h2>
+          <p className="text-sm text-slate-600">
+            Your portal access has been paused by your tax office administrator.
+            {currentOrg?.support_email && (
+              <>
+                {' '}
+                Please contact{' '}
+                <a
+                  href={`mailto:${currentOrg.support_email}`}
+                  className="font-semibold underline text-slate-800"
+                >
+                  {currentOrg.support_email}
+                </a>{' '}
+                for assistance.
+              </>
+            )}
+          </p>
           <button
-            onClick={handleExitClientInspection}
-            className="inline-flex items-center gap-1 bg-slate-900 text-white px-3 py-1 rounded-md text-xs"
+            type="button"
+            onClick={handleSignOut}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Tax Office Admin
+            <LogOut className="w-4 h-4" />
+            Sign Out
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Top Navbar */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {!logoError && logoSrc ? (
+  const isAdmin = ['office_admin', 'super_admin'].includes(membership?.role);
+  const primaryColor = currentOrg?.primary_color || '#059669';
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Top White-Label Navigation Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          {/* Brand Logo & Title */}
+          <div className="flex items-center gap-3 min-w-0">
+            {currentOrg?.logo_url ? (
               <img
-                src={logoSrc}
-                alt={tenant?.brand_name}
-                onError={() => setLogoError(true)}
-                className="h-9 w-auto object-contain rounded"
+                src={currentOrg.logo_url}
+                alt={currentOrg.brand_name}
+                className="h-9 w-auto object-contain shrink-0"
               />
             ) : (
-              <div style={{ backgroundColor: accentColor }} className="p-2 rounded-lg">
-                <BookOpen className="w-5 h-5 text-white" />
+              <div
+                className="h-9 w-9 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Building2 className="w-5 h-5" />
               </div>
             )}
-            <div>
-              <span className="font-bold text-base tracking-tight">
-                {tenant?.brand_name || 'Simple Bookkeeping System'}
-              </span>
-              {isAdmin && (
-                <span className="hidden sm:inline-block ml-2 px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-slate-800 text-emerald-400">
-                  {membership?.role === 'super_admin' ? 'Super Admin' : 'Office Admin'}
-                </span>
+            <div className="truncate">
+              <h1 className="text-base font-bold text-slate-900 truncate">
+                {currentOrg?.brand_name || DEFAULT_BRAND.brand_name}
+              </h1>
+              {currentOrg?.tagline && (
+                <p className="text-xs text-slate-500 truncate hidden sm:block">
+                  {currentOrg.tagline}
+                </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="hidden md:inline text-xs text-slate-400">{session.user.email}</span>
+          {/* Center Navigation Tabs */}
+          <nav className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
-              onClick={() => supabase.auth.signOut()}
-              className="inline-flex items-center gap-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition"
+              type="button"
+              onClick={() => setActiveTab('ledger')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                activeTab === 'ledger'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              My Ledger & Schedule C
+            </button>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('admin')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeTab === 'admin'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {membership?.role === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
+              </button>
+            )}
+          </nav>
+
+          {/* Right User Info & Sign Out */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="hidden md:block text-right">
+              <div className="text-xs font-semibold text-slate-800">
+                {membership?.full_name || session.user.email}
+              </div>
+              <div className="text-[11px] text-slate-500 capitalize">
+                {(membership?.role || 'client').replace('_', ' ')}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold"
+              title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="bg-slate-800/80 border-t border-slate-700/60">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex overflow-x-auto gap-1 py-1.5">
-            {navItems.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={isActive ? { backgroundColor: accentColor } : undefined}
-                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition ${
-                    isActive
-                      ? 'text-white shadow-sm'
-                      : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
           </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            tenant={tenant}
-            profile={profile}
-            onSaveProfile={handleSaveProfile}
-            transactions={transactions}
-            draws={draws}
-            vehicles={activeVehicles}
-            cogs={activeCogs}
-            homeOffice={activeHomeOffice}
-            selectedYear={selectedYear}
-            setSelectedYear={setSelectedYear}
-            availableYears={availableYears}
-          />
+      <main className="flex-1 py-8 px-4 sm:px-6">
+        {authError && (
+          <div className="max-w-5xl mx-auto mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
+            {authError}
+          </div>
         )}
 
-        {activeTab === 'income' && (
-          <TransactionLedger
-            type="income"
-            transactions={transactions}
-            selectedYear={selectedYear}
-            onAddTransaction={handleAddTransaction}
-            onBulkImportTransactions={handleBulkImportTransactions}
-            onUpdateTransaction={handleUpdateTransaction}
-            onBulkUpdateTransactions={handleBulkUpdateTransactions}
-            onDeleteTransaction={handleDeleteTransaction}
-            onBulkDeleteTransactions={handleBulkDeleteTransactions}
-          />
-        )}
-
-        {activeTab === 'expenses' && (
-          <TransactionLedger
-            type="expense"
-            transactions={transactions}
-            selectedYear={selectedYear}
-            onAddTransaction={handleAddTransaction}
-            onBulkImportTransactions={handleBulkImportTransactions}
-            onUpdateTransaction={handleUpdateTransaction}
-            onBulkUpdateTransactions={handleBulkUpdateTransactions}
-            onDeleteTransaction={handleDeleteTransaction}
-            onBulkDeleteTransactions={handleBulkDeleteTransactions}
-          />
-        )}
-
-        {activeTab === 'owners_draw' && (
-          <OwnersDrawTab
-            selectedYear={selectedYear}
-            draws={draws}
-            onAddDraw={handleAddDraw}
-            onDeleteDraw={handleDeleteDraw}
-          />
-        )}
-
-        {activeTab === 'vehicle' && (
-          <VehicleTab
-            selectedYear={selectedYear}
-            vehicles={activeVehicles}
-            onAddVehicle={handleAddVehicle}
-            onDeleteVehicle={handleDeleteVehicle}
-          />
-        )}
-
-        {activeTab === 'cogs' && (
-          <CogsTab selectedYear={selectedYear} cogs={activeCogs} onSaveCogs={handleSaveCogs} />
-        )}
-
-        {activeTab === 'home_office' && (
-          <HomeOfficeTab
-            selectedYear={selectedYear}
-            homeOffice={activeHomeOffice}
-            onSaveHomeOffice={handleSaveHomeOffice}
-          />
-        )}
-
-        {activeTab === 'next_steps' && (
-          <NextStepsTab
-            tenant={tenant}
-            selectedYear={selectedYear}
-            onNavigate={(tabId) => setActiveTab(tabId)}
-          />
-        )}
-
-        {activeTab === 'office_admin' && isAdmin && (
+        {activeTab === 'admin' && isAdmin ? (
           <OfficeAdminTab
-            tenant={tenant}
             membership={membership}
-            onTenantUpdated={(updated) => setTenant(updated)}
-            onInspectClient={handleInspectClient}
-            selectedYear={selectedYear}
+            currentOrg={currentOrg}
+            onOrgUpdated={(updatedOrg) => setCurrentOrg(updatedOrg)}
+          />
+        ) : (
+          <BookkeepingLedger
+            targetUserId={session.user.id}
+            targetUserName={membership?.full_name || session.user.email}
+            readOnly={false}
+            primaryColor={primaryColor}
           />
         )}
       </main>
+
+      {/* White-Label Footer */}
+      <footer className="bg-white border-t border-slate-200 py-4 px-4 sm:px-6 text-center text-xs text-slate-500">
+        <span>{currentOrg?.brand_name || DEFAULT_BRAND.brand_name}</span>
+        {currentOrg?.support_email && (
+          <>
+            {' • '}
+            Support:{' '}
+            <a
+              href={`mailto:${currentOrg.support_email}`}
+              className="underline hover:text-slate-800"
+            >
+              {currentOrg.support_email}
+            </a>
+          </>
+        )}
+      </footer>
     </div>
   );
 }
