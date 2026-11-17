@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Trash2, Download, Upload, FileSpreadsheet, TrendingUp, TrendingDown,
   CheckCircle2, AlertCircle, Calendar, Car, Package, Home, Wallet,
-  CheckSquare, Save, Eye, X, Briefcase, Mail,
+  CheckSquare, Save, Eye, X, Briefcase, Mail, Copy, Check,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -95,6 +95,7 @@ export default function BookkeepingLedger({
   const fileInputRef = useRef(null);
 
   const [statusMessage, setStatusMessage] = useState(null);
+  const [copiedSummary, setCopiedSummary] = useState(false);
 
   const yearOptions = useMemo(() => {
     const years = [];
@@ -554,23 +555,58 @@ export default function BookkeepingLedger({
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
-  const handleEmailTaxOffice = () => {
-    const recipient = (supportEmail || '').trim();
-    const businessLabel = worksheet.business_name || targetUserName || 'Client';
-    const subject = encodeURIComponent(`${selectedYear} Schedule C Bookkeeping Ready for Review - ${businessLabel}`);
-    const body = encodeURIComponent(
+  const buildScheduleCSummaryText = () => {
+    return (
       `Hello ${officeName || 'Tax Team'},\n\n` +
       `I have updated my ${selectedYear} bookkeeping records and Schedule C summary.\n\n` +
       `Business Name: ${worksheet.business_name || 'N/A'}\n` +
       `Business Activity: ${worksheet.business_activity || 'N/A'}\n` +
       `NAICS Code: ${worksheet.naics_code || 'N/A'}\n` +
       `Net Sales (Part I): ${formatCurrency(calculations.netSales)}\n` +
+      `Cost of Goods Sold (Line 4): ${formatCurrency(calculations.totalCogs)}\n` +
       `Total Deductible Expenses: ${formatCurrency(calculations.totalDeductibleExpenses + calculations.homeOfficeDeduction)}\n` +
-      `Estimated Net Profit (Line 31): ${formatCurrency(calculations.netProfit)}\n\n` +
+      `Estimated Net Profit (Line 31): ${formatCurrency(calculations.netProfit)}\n` +
+      `Owner's Draw (YTD Non-Deductible): ${formatCurrency(calculations.totalOwnersDraw)}\n\n` +
       `I have exported my ${selectedYear} Schedule C CSV report and am ready for your review.\n\n` +
       `Best regards,\n${targetUserName || ''}`
     );
+  };
+
+  const handleEmailTaxOffice = () => {
+    const recipient = (supportEmail || '').trim();
+    const businessLabel = worksheet.business_name || targetUserName || 'Client';
+    const subject = encodeURIComponent(
+      `${selectedYear} Schedule C Bookkeeping Ready for Review - ${businessLabel}`
+    );
+    const body = encodeURIComponent(buildScheduleCSummaryText());
     window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+  };
+
+  const handleCopySummary = async () => {
+    const summaryText = buildScheduleCSummaryText();
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      setCopiedSummary(true);
+      setStatusMessage({
+        type: 'success',
+        text: `Copied ${selectedYear} Schedule C summary to clipboard—paste it directly into Gmail or webmail.`,
+      });
+      setTimeout(() => setCopiedSummary(false), 3000);
+    } catch {
+      // Fallback for older browsers or non-HTTPS local previews
+      const textArea = document.createElement('textarea');
+      textArea.value = summaryText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedSummary(true);
+      setStatusMessage({
+        type: 'success',
+        text: `Copied ${selectedYear} Schedule C summary to clipboard.`,
+      });
+      setTimeout(() => setCopiedSummary(false), 3000);
+    }
   };
 
   const handleExportCsv = () => {
