@@ -664,21 +664,25 @@ export default function BookkeepingLedger({
               onSubmit={(e) => handleAddEntry(e, activeTab === 'income' ? 'income' : 'expense')}
               className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4"
             >
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                {activeTab === 'income' ? 'Enter Business Income' : 'Enter Business Expense'}
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={txForm.transaction_date}
-                    onChange={(e) => setTxForm({ ...txForm, transaction_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                    {activeTab === 'income' ? 'Enter Business Income' : 'Enter Business Expense'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Add a single entry below or batch-import a bank/credit card CSV statement.
+                  </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm self-start sm:self-auto"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Bank CSV
+                </button>
+              </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
