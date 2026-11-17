@@ -152,13 +152,13 @@ Deno.serve(async (req) => {
 
     // 5. Provision the Office Admin Auth user (auto-confirmed so they can log in immediately)
     const { data: createdAuth, error: authCreateError } = await adminClient.auth.admin.createUser({
-      email: cleanAdminEmail,
-      password: admin_password,
+      email: cleanClientEmail,
+      password: password,
       email_confirm: true,
       user_metadata: {
-        full_name: cleanAdminName,
-        office_slug: createdOrg.slug,
-        role: 'office_admin',
+        full_name: full_name.trim(),
+        role: 'client',
+        must_change_password: true,
       },
     });
 
