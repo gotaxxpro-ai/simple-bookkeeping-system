@@ -22,6 +22,7 @@ import {
   Mail,
   Copy,
   Check,
+  Calculator,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -38,6 +39,24 @@ const createEmptyVehicle = () => ({
   another_vehicle_available: true,
   has_written_evidence: true,
 });
+
+function getIrsBusinessMileageRate(year, period = 'h2') {
+  const yr = Number(year);
+  if (yr === 2026) {
+    return period === 'h1'
+      ? { rate: 0.725, label: '$0.725/mi (Jan 1 – Jun 30, 2026)' }
+      : { rate: 0.76, label: '$0.76/mi (Jul 1 – Dec 31, 2026)' };
+  }
+  if (yr === 2025) return { rate: 0.70, label: '$0.70/mi (2025 IRS Rate)' };
+  if (yr === 2024) return { rate: 0.67, label: '$0.67/mi (2024 IRS Rate)' };
+  if (yr === 2023) return { rate: 0.655, label: '$0.655/mi (2023 IRS Rate)' };
+  if (yr === 2022) {
+    return period === 'h1'
+      ? { rate: 0.585, label: '$0.585/mi (Jan 1 – Jun 30, 2022)' }
+      : { rate: 0.625, label: '$0.625/mi (Jul 1 – Dec 31, 2022)' };
+  }
+  return { rate: 0.76, label: `$0.76/mi (${yr} Standard Rate)` };
+}
 
 const DEFAULT_WORKSHEET = {
   business_name: '',
@@ -156,6 +175,8 @@ export default function BookkeepingLedger({
   const fileInputRef = useRef(null);
 
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [showMileageRatePreview, setShowMileageRatePreview] = useState(true);
+  const [mileageRatePeriod, setMileageRatePeriod] = useState('h2');
   const [statusMessage, setStatusMessage] = useState(null);
 
   const yearOptions = useMemo(() => {
@@ -624,6 +645,9 @@ export default function BookkeepingLedger({
     const totalMiles = totalBusinessMiles + totalCommutingMiles + totalOtherMiles;
     const businessUsePct = totalMiles > 0 ? (totalBusinessMiles / totalMiles) * 100 : 0;
 
+    const irsMileageInfo = getIrsBusinessMileageRate(selectedYear, mileageRatePeriod);
+    const totalEstimatedStandardMileageDeduction = totalBusinessMiles * irsMileageInfo.rate;
+
     const officeSqft = Number(worksheet.home_office_sqft) || 0;
     const totalHomeSqft = Number(worksheet.home_total_sqft) || 0;
     let homeOfficeDeduction = 0;
@@ -702,10 +726,12 @@ export default function BookkeepingLedger({
       totalOtherMiles,
       totalMiles,
       businessUsePct,
+      irsMileageInfo,
+      totalEstimatedStandardMileageDeduction,
       incomeLines: allLines.filter((l) => l.type === 'income'),
       expenseLines: allLines.filter((l) => l.type === 'expense'),
     };
-  }, [transactions, categories, worksheet]);
+  }, [transactions, categories, worksheet, selectedYear, mileageRatePeriod]);
 
   const formatCurrency = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
@@ -722,7 +748,7 @@ export default function BookkeepingLedger({
       `Total Deductible Expenses: ${formatCurrency(calculations.totalDeductibleExpenses + calculations.homeOfficeDeduction)}\n` +
       `Estimated Net Profit (Line 31): ${formatCurrency(calculations.netProfit)}\n` +
       `Owner's Draw (YTD Non-Deductible): ${formatCurrency(calculations.totalOwnersDraw)}\n` +
-      `Vehicles Logged: ${(worksheet.vehicles || []).length} (${calculations.totalBusinessMiles.toLocaleString()} business miles)\n\n` +
+      `Vehicles Logged: ${(worksheet.vehicles || []).length} (${calculations.totalBusinessMiles.toLocaleString()} business miles | Est. Std. Mileage: ${formatCurrency(calculations.totalEstimatedStandardMileageDeduction)})\n\n` +
       `I have exported my ${selectedYear} Schedule C CSV report and am ready for your review.\n\n` +
       `Best regards,\n${targetUserName || ''}`
     );
@@ -765,6 +791,7 @@ export default function BookkeepingLedger({
   };
 
   const handleExportCsv = () => {
+    const rateInfo = getIrsBusinessMileageRate(selectedYear, mileageRatePeriod);
     const rows = [
       ['Tax Year', selectedYear],
       ['Business Name', `"${worksheet.business_name || ''}"`],
@@ -802,11 +829,12 @@ export default function BookkeepingLedger({
         const vOther = Number(v.other_miles) || 0;
         const vTot = vBiz + vComm + vOther;
         const vPct = vTot > 0 ? ((vBiz / vTot) * 100).toFixed(1) : '0.0';
+        const vStdDed = (vBiz * rateInfo.rate).toFixed(2);
         const label = [v.vehicle_model, v.vehicle_type].filter(Boolean).join(' ') || `Vehicle #${idx + 1}`;
         return [
           `Part IV - Vehicle #${idx + 1}`,
           'Miles',
-          `"${label} (Placed in service: ${v.date_placed_in_service || 'N/A'}) — Business: ${vBiz} | Commuting: ${vComm} | Other: ${vOther} (${vPct}% Business)"`,
+          `"${label} (Placed in service: ${v.date_placed_in_service || 'N/A'}) — Business: ${vBiz} | Commuting: ${vComm} | Other: ${vOther} (${vPct}% Business) | Est. Std. Mileage (${rateInfo.label}): $${vStdDed}"`,
           '',
           '',
           '',
@@ -1213,34 +1241,75 @@ export default function BookkeepingLedger({
       {/* TAB 3: MULTI-VEHICLE INFO (SCHEDULE C PART IV) */}
       {activeTab === 'vehicle' && (
         <form onSubmit={handleSaveWorksheet} className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">
-                Vehicle Information — Schedule C Part IV ({selectedYear})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Add each vehicle used for business during {selectedYear}. Each vehicle calculates its own IRS business-use percentage.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="text-right">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase">Combined Business Miles</div>
-                <div className="text-lg font-bold text-emerald-700">
-                  {calculations.totalBusinessMiles.toLocaleString()} mi ({calculations.businessUsePct.toFixed(1)}%)
-                </div>
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Vehicle Information — Schedule C Part IV ({selectedYear})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Add each vehicle used for business during {selectedYear}. Each vehicle calculates its own IRS business-use percentage and optional standard mileage preview.
+                </p>
               </div>
 
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={handleAddVehicle}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Vehicle
-                </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-right pr-2">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase">Combined Business Miles</div>
+                  <div className="text-base font-bold text-emerald-700">
+                    {calculations.totalBusinessMiles.toLocaleString()} mi ({calculations.businessUsePct.toFixed(1)}%)
+                  </div>
+                </div>
+
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={handleAddVehicle}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Vehicle
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Optional IRS Standard Mileage Rate Preview Bar */}
+            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showMileageRatePreview}
+                    onChange={(e) => setShowMileageRatePreview(e.target.checked)}
+                    className="rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>Show IRS Standard Mileage Rate Preview</span>
+                </label>
+
+                {showMileageRatePreview && (selectedYear === 2026 || selectedYear === 2022) && (
+                  <select
+                    value={mileageRatePeriod}
+                    onChange={(e) => setMileageRatePeriod(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-semibold text-slate-700"
+                  >
+                    <option value="h2">
+                      {selectedYear === 2026 ? 'Jul–Dec 2026 ($0.76/mi)' : 'Jul–Dec 2022 ($0.625/mi)'}
+                    </option>
+                    <option value="h1">
+                      {selectedYear === 2026 ? 'Jan–Jun 2026 ($0.725/mi)' : 'Jan–Jun 2022 ($0.585/mi)'}
+                    </option>
+                  </select>
+                )}
+              </div>
+
+              {showMileageRatePreview && (worksheet.vehicles || []).length > 0 && (
+                <div className="text-xs font-semibold text-slate-700">
+                  Combined Est. Standard Mileage:{' '}
+                  <span className="font-mono text-sm font-bold text-emerald-700">
+                    {formatCurrency(calculations.totalEstimatedStandardMileageDeduction)}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -1273,6 +1342,8 @@ export default function BookkeepingLedger({
               const vOther = Number(veh.other_miles) || 0;
               const vTotal = vBiz + vComm + vOther;
               const vPct = vTotal > 0 ? (vBiz / vTotal) * 100 : 0;
+              const irsRateInfo = getIrsBusinessMileageRate(selectedYear, mileageRatePeriod);
+              const estimatedStandardDeduction = vBiz * irsRateInfo.rate;
 
               return (
                 <div
@@ -1396,6 +1467,21 @@ export default function BookkeepingLedger({
                         />
                       </div>
                     </div>
+
+                    {showMileageRatePreview && (
+                      <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 text-slate-600">
+                          <Calculator className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>
+                            Est. Standard Mileage Deduction ({vBiz.toLocaleString()} biz mi ×{' '}
+                            <strong>{irsRateInfo.label}</strong>):
+                          </span>
+                        </div>
+                        <div className="font-mono text-sm font-bold text-emerald-700">
+                          {formatCurrency(estimatedStandardDeduction)}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2.5 text-sm text-slate-700">
@@ -1435,6 +1521,12 @@ export default function BookkeepingLedger({
                 </div>
               );
             })
+          )}
+
+          {showMileageRatePreview && (worksheet.vehicles || []).length > 0 && (
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
+              <strong>IRS Deduction Note:</strong> Standard mileage estimates are shown for comparison only and are not automatically added to Schedule C Line 31 so they do not double-count actual vehicle expenses entered in your Expenses ledger. Your tax preparer will apply whichever method (Standard Mileage vs. Actual Expenses) gives you the larger legal deduction.
+            </div>
           )}
 
           {!readOnly && (worksheet.vehicles || []).length > 0 && (
@@ -2075,51 +2167,3 @@ export default function BookkeepingLedger({
                             }}
                             className="w-full px-2 py-1 border border-slate-200 rounded bg-white text-slate-800"
                           >
-                            {rowCats.map((cat) => (
-                              <option key={cat.id} value={cat.id}>
-                                {cat.line_number} — {cat.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900">
-                          {formatCurrency(row.amount)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-600">
-                {selectedCsvCount} of {csvPreviewRows.length} rows selected for import
-              </span>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCsvModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={importingCsv || selectedCsvCount === 0}
-                  onClick={handleCommitCsvImport}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <Upload className="w-4 h-4" />
-                  {importingCsv
-                    ? 'Importing...'
-                    : `Import ${selectedCsvCount} Transaction${selectedCsvCount === 1 ? '' : 's'}`}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
