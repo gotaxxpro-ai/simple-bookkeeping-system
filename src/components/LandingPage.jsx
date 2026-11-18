@@ -26,15 +26,15 @@ export default function LandingPage({ tenant, onOpenAuth }) {
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('checkout') === 'success') {
-        setCheckoutSuccess(true);
-      }
+  const triggerAuth = (mode = 'login') => {
+    if (typeof onOpenAuth === 'function') {
+      onOpenAuth(mode);
     }
-  }, []);
-
+    if (typeof window !== 'undefined') {
+      window.location.hash = mode === 'signup' ? 'signup' : 'login';
+    }
+  };
+  
   const isCustomTenant = tenant && tenant.slug && tenant.slug !== 'default';
   const brandName = tenant?.brand_name || 'Simple Bookkeeping System';
   const accentColor = tenant?.primary_color || '#059669';
@@ -110,7 +110,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => onOpenAuth('login')}
+              onClick={() => triggerAuth('login')}
               title="Sign in to an existing client or tax office account"
               className="px-3.5 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
             >
@@ -118,7 +118,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
             </button>
             <button
               type="button"
-              onClick={() => onOpenAuth('signup')}
+              onClick={() => triggerAuth('signup')}
               title="Create a new bookkeeping account"
               style={{ backgroundColor: accentColor }}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-95 shadow-sm transition"
@@ -189,7 +189,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => onOpenAuth('signup')}
+                    onClick={() => triggerAuth('signup')}
                     title="Register your client bookkeeping account"
                     style={{ backgroundColor: accentColor }}
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
@@ -200,7 +200,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 )}
                 <button
                   type="button"
-                  onClick={() => onOpenAuth('login')}
+                  onClick={() => triggerAuth('login')}
                   title="Sign in to your existing bookkeeping account"
                   className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
                 >
@@ -231,7 +231,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 </a>
                 <button
                   type="button"
-                  onClick={() => onOpenAuth('login')}
+                  onClick={() => triggerAuth('login')}
                   title="Sign in to your tax office portal"
                   className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
                 >
@@ -663,7 +663,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
           </p>
           <button
             type="button"
-            onClick={() => onOpenAuth('login')}
+            onClick={() => triggerAuth('login')}
             title="Open the client and tax preparer login form"
             className="text-emerald-400 hover:underline font-semibold"
           >
