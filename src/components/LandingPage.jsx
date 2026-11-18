@@ -1,516 +1,684 @@
 import React, { useState, useEffect } from 'react';
-import LandingPage from './components/LandingPage';
+import CheckoutModal from './CheckoutModal';
 import {
-  LogOut,
-  ShieldCheck,
   BookOpen,
-  KeyRound,
-  AlertTriangle,
+  CheckCircle2,
+  ArrowRight,
   Building2,
-  Mail,
-  Lock,
-  User,
-  Eye,
-  EyeOff,
+  UserCheck,
+  FileSpreadsheet,
+  Car,
+  Home,
+  Package,
+  Wallet,
+  Upload,
+  ShieldCheck,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import { supabase } from './lib/supabase';
-import BookkeepingLedger from './components/BookkeepingLedger';
-import OfficeAdminTab from './components/OfficeAdminTab';
-import ChangePasswordModal from './components/ChangePasswordModal';
 
-const DEFAULT_ORG = {
-  id: 'default',
-  slug: 'default',
-  brand_name: 'Simple Bookkeeping System',
-  tagline: 'Simple Multi-Year Business Ledger & Schedule C Reports',
-  primary_color: '#059669',
-  logo_url: null,
-  support_email: '',
-  is_active: true,
-};
-
-export default function App() {
-  const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  const [showAuth, setShowAuth] = useState(() => {
-    const slug = new URLSearchParams(window.location.search).get('office');
-    return Boolean(slug && slug !== 'default');
-  });
-
-  const [currentOrg, setCurrentOrg] = useState(DEFAULT_ORG);
-  const [membership, setMembership] = useState(null);
-  const [loadingMembership, setLoadingMembership] = useState(false);
-
-  const [activeView, setActiveView] = useState('ledger');
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPasswordText, setShowPasswordText] = useState(false);
-  const [submittingAuth, setSubmittingAuth] = useState(false);
-  const [authError, setAuthError] = useState(null);
-  const [authMessage, setAuthMessage] = useState(null);
-
-  const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
-  const primaryColor = currentOrg?.primary_color || '#059669';
+export default function LandingPage({ tenant, onOpenAuth }) {
+  const [audience, setAudience] = useState('tax_pros'); // 'tax_pros' | 'business_owners'
+  const [b2cBilling, setB2cBilling] = useState('annual'); // 'monthly' ($15/mo) | 'annual' ($129/yr)
+  const [openFaq, setOpenFaq] = useState(0);
+  const [logoError, setLogoError] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState(null);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-    async function loadBrandingFromSlug() {
+    if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const slug = (params.get('office') || '').trim().toLowerCase();
-      if (!slug || slug === 'default') return;
-
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      if (!error && data && isMounted) {
-        setCurrentOrg(data);
-        document.title = data.brand_name || 'Simple Bookkeeping System';
+      if (params.get('checkout') === 'success') {
+        setCheckoutSuccess(true);
       }
     }
-    loadBrandingFromSlug();
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      setAuthLoading(false);
-    });
+  const isCustomTenant = tenant && tenant.slug && tenant.slug !== 'default';
+  const brandName = tenant?.brand_name || 'Simple Bookkeeping System';
+  const accentColor = tenant?.primary_color || '#059669';
+  const logoSrc = tenant?.logo_url || '/logo.png';
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (mustChangePassword) {
-      setShowPasswordModal(true);
-    }
-  }, [mustChangePassword]);
-
-  useEffect(() => {
-    if (!session?.user?.id) {
-      setMembership(null);
-      return;
-    }
-
-    let isMounted = true;
-    async function loadUserMembership() {
-      setLoadingMembership(true);
-      try {
-        const { data: memberData, error } = await supabase
-          .from('user_memberships')
-          .select('*, organizations(*)')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-
-        if (!error && memberData && isMounted) {
-          setMembership(memberData);
-          if (memberData.organizations) {
-            setCurrentOrg(memberData.organizations);
-            document.title = memberData.organizations.brand_name || 'Simple Bookkeeping System';
-          }
-        }
-      } finally {
-        if (isMounted) setLoadingMembership(false);
-      }
-    }
-
-    loadUserMembership();
-    return () => {
-      isMounted = false;
-    };
-  }, [session?.user?.id]);
-
-  const handleOpenAuth = (mode = 'login') => {
-    setIsSignUp(mode === 'signup');
-    setAuthError(null);
-    setAuthMessage(null);
-    setConfirmPassword('');
-    setShowPasswordText(false);
-    setShowAuth(true);
-  };
-
-  const handleAuthSubmit = async (e) => {
-    e.preventDefault();
-    setSubmittingAuth(true);
-    setAuthError(null);
-    setAuthMessage(null);
-
-    try {
-      const cleanEmail = email.trim().toLowerCase();
-      const cleanPassword = password.trim();
-
-      if (isSignUp) {
-        if (cleanPassword.length < 6) {
-          throw new Error('Password must be at least 6 characters long.');
-        }
-        if (cleanPassword !== confirmPassword.trim()) {
-          throw new Error('Passwords do not match.');
-        }
-
-        const { error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: cleanPassword,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-              office_slug: currentOrg?.slug !== 'default' ? currentOrg?.slug : undefined,
-            },
-          },
-        });
-        if (error) throw error;
-        setAuthMessage('Account created! You can now sign in with your password.');
-        setConfirmPassword('');
-        setIsSignUp(false);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: cleanPassword,
-        });
-        if (error) throw error;
-      }
-    } catch (err) {
-      setAuthError(err.message || 'Authentication failed.');
-    } finally {
-      setSubmittingAuth(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setMembership(null);
-    setActiveView('ledger');
-    setShowAuth(false);
-  };
-
-  if (authLoading || (session && loadingMembership)) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
-        Loading workspace...
-      </div>
-    );
-  }
-
-  if (!session) {
-    if (!showAuth) {
-      return <LandingPage tenant={currentOrg} onOpenAuth={handleOpenAuth} />;
-    }
-
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md mb-3">
-          <button
-            type="button"
-            onClick={() => setShowAuth(false)}
-            title="Return to the home page and pricing plans"
-            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-          >
-            &larr; Back to Home
-          </button>
-        </div>
-
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div
-            className="px-6 py-6 text-white text-center space-y-1.5"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {currentOrg?.logo_url ? (
-              <img
-                src={currentOrg.logo_url}
-                alt={currentOrg.brand_name}
-                className="h-10 mx-auto mb-2 object-contain"
-              />
-            ) : (
-              <Building2 className="w-8 h-8 mx-auto mb-1 opacity-90" />
-            )}
-            <h1 className="text-xl font-bold tracking-tight">{currentOrg.brand_name}</h1>
-            <p className="text-xs opacity-90">{currentOrg.tagline}</p>
-          </div>
-
-          <form onSubmit={handleAuthSubmit} className="p-6 space-y-4">
-            {authError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
-                {authError}
-              </div>
-            )}
-            {authMessage && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
-                {authMessage}
-              </div>
-            )}
-
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Jane Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  placeholder="you@business.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {isSignUp ? 'Create Password' : 'Password'}
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showPasswordText ? 'text' : 'password'}
-                  required
-                  minLength={6}
-                  placeholder={isSignUp ? 'Choose a password (min 6 chars)' : '••••••••'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-10 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordText(!showPasswordText)}
-                  title={showPasswordText ? 'Hide password' : 'Show password'}
-                  aria-label={showPasswordText ? 'Hide password' : 'Show password'}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1"
-                >
-                  {showPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type={showPasswordText ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    placeholder="Re-enter your password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
-                </div>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={submittingAuth}
-              title={isSignUp ? 'Register your new bookkeeping account' : 'Sign in to your dashboard'}
-              className="w-full py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {submittingAuth ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
-            </button>
-
-            <div className="text-center pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setConfirmPassword('');
-                  setAuthError(null);
-                  setAuthMessage(null);
-                }}
-                title={isSignUp ? 'Switch to sign-in form' : 'Switch to new account registration'}
-                className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
-              >
-                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Create One'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  if (membership && membership.is_active === false) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-2xl border border-red-200 shadow-sm text-center space-y-4">
-          <AlertTriangle className="w-12 h-12 text-red-600 mx-auto" />
-          <h2 className="text-xl font-bold text-slate-900">Account Suspended</h2>
-          <p className="text-sm text-slate-600">
-            Your access to <strong>{currentOrg.brand_name}</strong> has been paused by your tax office administrator.
-            {currentOrg.support_email && (
-              <>
-                {' '}
-                Please contact{' '}
-                <a
-                  href={`mailto:${currentOrg.support_email}`}
-                  className="font-semibold text-emerald-700 underline"
-                >
-                  {currentOrg.support_email}
-                </a>{' '}
-                for assistance.
-              </>
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            title="Sign out of this suspended account"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const userRole = (membership?.role || 'client').toLowerCase();
-  const isAdmin = userRole === 'super_admin' || userRole === 'office_admin';
+  const faqs = [
+    {
+      q: 'Do my clients or users need a Google account to use this?',
+      a: 'No. Users register with any email address and password. All income, expenses, mileage, COGS, and home office records are stored securely in their private account.',
+    },
+    {
+      q: 'What is the difference between Service Bureau ($29/mo) and B2B ($249 one-time)?',
+      a: 'Both give your tax office a custom white-label portal with your logo, colors, client invite link, and Tax Office Admin report dashboard. Choose Service Bureau for low $29/month billing, or B2B for a single $249 one-time license fee with no recurring monthly charges.',
+    },
+    {
+      q: 'Can users import existing data from Google Sheets or bank statements?',
+      a: 'Yes. Both the Income and Expenses ledgers include a smart CSV importer with automatic column mapping, date formatting, and bulk editing tools.',
+    },
+    {
+      q: 'Why is Owner’s Draw tracked separately from Expenses?',
+      a: 'For sole proprietors and single-member LLCs, personal withdrawals (Owner’s Draw) are reductions of owner equity—not Schedule C deductible expenses. Separating them prevents clients from accidentally overstating business deductions.',
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+      {checkoutSuccess && (
+        <div className="bg-emerald-600 text-white px-4 py-3 text-center text-xs sm:text-sm font-semibold flex flex-wrap items-center justify-center gap-3">
+          <span>
+            Payment received! Your account is ready. Create your login or sign in with the email you used at checkout.
+          </span>
+          <button
+            type="button"
+            onClick={() => onOpenAuth('signup')}
+            title="Finish setting up your account login"
+            className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800"
+          >
+            Complete Account Setup →
+          </button>
+        </div>
+      )}
+
+      {/* Top Navigation */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {currentOrg?.logo_url ? (
-              <img src={currentOrg.logo_url} alt={currentOrg.brand_name} className="h-8 object-contain" />
+            {!logoError && logoSrc ? (
+              <img
+                src={logoSrc}
+                alt={brandName}
+                onError={() => setLogoError(true)}
+                className="h-9 w-auto object-contain rounded"
+              />
             ) : (
-              <span
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {(currentOrg.brand_name || 'S')[0]}
-              </span>
-            )}
-            <div>
-              <div className="text-base font-bold text-slate-900 leading-tight">
-                {currentOrg.brand_name}
+              <div style={{ backgroundColor: accentColor }} className="p-2 rounded-lg text-white">
+                <BookOpen className="w-5 h-5" />
               </div>
-              <div className="text-[11px] text-slate-500">{currentOrg.tagline}</div>
-            </div>
+            )}
+            <span className="font-bold text-base sm:text-lg tracking-tight text-slate-900">
+              {brandName}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && (
-              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setActiveView('ledger')}
-                  title="Open your personal business bookkeeping & Schedule C ledger"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'ledger'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  My Books
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveView('admin')}
-                  title="Manage white-label branding, client logins, and tax office reports"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'admin'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
-                </button>
-              </div>
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+            <a href="#features" className="hover:text-slate-900">Features</a>
+            <a href="#how-it-works" className="hover:text-slate-900">How It Works</a>
+            {!isCustomTenant && (
+              <a href="#pricing" className="hover:text-slate-900">Pricing</a>
             )}
+            <a href="#faq" className="hover:text-slate-900">FAQ</a>
+          </nav>
 
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={() => setShowPasswordModal(true)}
-              title="Change your login password"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+              onClick={() => onOpenAuth('login')}
+              title="Sign in to an existing client or tax office account"
+              className="px-3.5 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
             >
-              <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-              Change Password
+              Sign In
             </button>
-
             <button
               type="button"
-              onClick={handleSignOut}
-              title="Sign out of your account"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+              onClick={() => onOpenAuth('signup')}
+              title="Create a new bookkeeping account"
+              style={{ backgroundColor: accentColor }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-lg hover:opacity-95 shadow-sm transition"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
+              Get Started
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-6">
-        {isAdmin && activeView === 'admin' ? (
-          <OfficeAdminTab
-            membership={membership}
-            currentOrg={currentOrg}
-            onOrgUpdated={(updatedOrg) => setCurrentOrg(updatedOrg)}
-          />
-        ) : (
-          <BookkeepingLedger
-            targetUserId={session.user.id}
-            targetUserName={membership?.full_name || session.user.email}
-            readOnly={false}
-            primaryColor={primaryColor}
-            supportEmail={currentOrg?.support_email}
-            officeName={currentOrg?.brand_name}
-          />
-        )}
-      </main>
+      {/* Hero Section */}
+      <section className="bg-slate-900 text-white py-16 sm:py-24 px-4">
+        <div className="max-w-6xl mx-auto text-center">
+          {!isCustomTenant && (
+            <div className="inline-flex p-1 rounded-full bg-slate-800 border border-slate-700 mb-8">
+              <button
+                type="button"
+                onClick={() => setAudience('tax_pros')}
+                title="View white-label features for tax offices and service bureaus"
+                className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
+                  audience === 'tax_pros'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                For Tax Offices &amp; Service Bureaus
+              </button>
+              <button
+                type="button"
+                onClick={() => setAudience('business_owners')}
+                title="View Schedule C bookkeeping features for self-employed business owners"
+                className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
+                  audience === 'business_owners'
+                    ? 'bg-emerald-600 text-white'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                For Self-Employed &amp; LLCs
+              </button>
+            </div>
+          )}
 
-      <ChangePasswordModal
-        isOpen={showPasswordModal || mustChangePassword}
-        onClose={() => {
-          if (!mustChangePassword) {
-            setShowPasswordModal(false);
-          }
-        }}
-        primaryColor={primaryColor}
-        forceChange={mustChangePassword}
-      />
+          {isCustomTenant || audience === 'business_owners' ? (
+            <>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4">
+                <Sparkles className="w-3.5 h-3.5" />
+                Built Specifically for IRS Schedule C Filers
+              </div>
+              <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-4xl mx-auto leading-tight">
+                Stop Dreading Tax Season. Turn Receipts Into a Clean Schedule C Report in Minutes.
+              </h1>
+              <p className="mt-5 text-base sm:text-lg text-slate-300 max-w-2xl mx-auto">
+                Track business income, 23 IRS expense categories, vehicle mileage, inventory COGS, home office deductions, and owner’s draws—without bloated accounting software or spreadsheets.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                {!isCustomTenant ? (
+                  <a
+                    href="#pricing"
+                    style={{ backgroundColor: accentColor }}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
+                  >
+                    Start for $15/mo or $129/yr
+                    <ArrowRight className="w-5 h-5" />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAuth('signup')}
+                    title="Register your client bookkeeping account"
+                    style={{ backgroundColor: accentColor }}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
+                  >
+                    Create Your Bookkeeping Account
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('login')}
+                  title="Sign in to your existing bookkeeping account"
+                  className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
+                >
+                  Sign In to Existing Account
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4">
+                <Building2 className="w-3.5 h-3.5" />
+                White-Label Bookkeeping Portal for Tax Professionals
+              </div>
+              <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-4xl mx-auto leading-tight">
+                Eliminate Shoebox Receipts. Give Every Schedule C Client a Bookkeeping App With{' '}
+                <span className="text-emerald-400">Your Logo</span>.
+              </h1>
+              <p className="mt-5 text-base sm:text-lg text-slate-300 max-w-2xl mx-auto">
+                Launch your own white-label bookkeeping portal for $29/mo or a $249 one-time fee. Your clients categorize their income, expenses, mileage, and home office year-round—and you download their tax-ready Schedule C summary in one click.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a
+                  href="#pricing"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-lg transition"
+                >
+                  View Plans &amp; Pricing
+                  <ArrowRight className="w-5 h-5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('login')}
+                  title="Sign in to your tax office portal"
+                  className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
+                >
+                  Sign In to Portal
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Product Preview Mockup Card */}
+          <div className="mt-14 max-w-5xl mx-auto bg-slate-800/80 border border-slate-700 rounded-2xl p-4 sm:p-6 shadow-2xl text-left">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-rose-500" />
+                <span className="w-3 h-3 rounded-full bg-amber-400" />
+                <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="ml-2 text-xs font-mono text-slate-400">
+                  Schedule C Dashboard • Tax Year 2026
+                </span>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300">
+                1-Click PDF &amp; CSV Export
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-5">
+              <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-700">
+                <p className="text-[11px] uppercase text-slate-400 font-semibold">Gross Income</p>
+                <p className="text-xl font-bold text-white mt-1">$142,850.00</p>
+              </div>
+              <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-700">
+                <p className="text-[11px] uppercase text-slate-400 font-semibold">Schedule C Exp.</p>
+                <p className="text-xl font-bold text-white mt-1">$38,410.00</p>
+              </div>
+              <div className="bg-slate-900/90 p-4 rounded-xl border border-slate-700">
+                <p className="text-[11px] uppercase text-slate-400 font-semibold">COGS &amp; Office</p>
+                <p className="text-xl font-bold text-white mt-1">$11,200.00</p>
+              </div>
+              <div className="bg-slate-900/90 p-4 rounded-xl border border-emerald-500/40">
+                <p className="text-[11px] uppercase text-emerald-400 font-semibold">Net Profit</p>
+                <p className="text-xl font-bold text-emerald-400 mt-1">$93,240.00</p>
+              </div>
+              <div className="bg-indigo-950/60 p-4 rounded-xl border border-indigo-500/40 col-span-2 lg:col-span-1">
+                <p className="text-[11px] uppercase text-indigo-300 font-semibold">Owner’s Draw</p>
+                <p className="text-xl font-bold text-indigo-200 mt-1">$54,000.00</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section id="features" className="py-16 sm:py-20 px-4 max-w-7xl mx-auto">
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900">
+            Everything Needed for Schedule C — Nothing You Don’t
+          </h2>
+          <p className="mt-3 text-slate-600">
+            Every tab maps directly to IRS Schedule C line items so business owners stay organized and tax preparers save hours per return.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[
+            {
+              icon: FileSpreadsheet,
+              title: '23 IRS Schedule C Categories',
+              desc: 'Pre-loaded with all 10 income streams and 23 deductible expense lines from Advertising and Contract Labor to Utilities and Wages.',
+            },
+            {
+              icon: Upload,
+              title: 'CSV Import & Bulk Editing',
+              desc: 'Upload bank statements or exported Google Sheets in seconds. Auto-map columns, preview rows, and bulk-categorize dozens of transactions at once.',
+            },
+            {
+              icon: Car,
+              title: 'Vehicle Mileage & Part IV Tracker',
+              desc: 'Track multiple business vehicles per year, automatically calculate Business Use %, and log IRS substantiation answers.',
+            },
+            {
+              icon: Home,
+              title: 'Home Office Calculator',
+              desc: 'Compare the Simplified Method ($5/sq ft up to 300 sq ft) against the Actual Expense Method with automatic indirect expense prorating.',
+            },
+            {
+              icon: Package,
+              title: 'Cost of Goods Sold (Part III)',
+              desc: 'Track beginning inventory, purchases less personal withdrawals, labor, materials, and closing inventory per tax year.',
+            },
+            {
+              icon: Wallet,
+              title: 'Separate Owner’s Draw Ledger',
+              desc: 'Keep personal withdrawals isolated from business expenses so owners know their true cashflow without distorting net profit.',
+            },
+          ].map((feat) => {
+            const Icon = feat.icon;
+            return (
+              <div
+                key={feat.title}
+                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition"
+              >
+                <div
+                  style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
+                >
+                  <Icon className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-lg text-slate-900 mb-2">{feat.title}</h3>
+                <p className="text-sm text-slate-600 leading-relaxed">{feat.desc}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section id="how-it-works" className="bg-white border-y border-slate-200 py-16 px-4">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+              How It Works
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div
+                style={{ backgroundColor: accentColor }}
+                className="w-10 h-10 rounded-full text-white font-bold flex items-center justify-center mx-auto mb-4"
+              >
+                1
+              </div>
+              <h3 className="font-bold text-base text-slate-900 mb-1">
+                Choose Your Plan &amp; Sign In
+              </h3>
+              <p className="text-sm text-slate-600">
+                Select an individual business account or launch your white-label tax office portal in under a minute—no Google account required.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div
+                style={{ backgroundColor: accentColor }}
+                className="w-10 h-10 rounded-full text-white font-bold flex items-center justify-center mx-auto mb-4"
+              >
+                2
+              </div>
+              <h3 className="font-bold text-base text-slate-900 mb-1">
+                Log or Import Transactions
+              </h3>
+              <p className="text-sm text-slate-600">
+                Enter income, expenses, mileage, and home office figures throughout the year—or bulk-import your CSV bank statements.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div
+                style={{ backgroundColor: accentColor }}
+                className="w-10 h-10 rounded-full text-white font-bold flex items-center justify-center mx-auto mb-4"
+              >
+                3
+              </div>
+              <h3 className="font-bold text-base text-slate-900 mb-1">
+                Run Year-End Tax Reports
+              </h3>
+              <p className="text-sm text-slate-600">
+                Filter any tax year or date range on the Dashboard and export a clean CSV or print-ready PDF Schedule C summary.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section: B2C ($15/mo or $129/yr), Service Bureau ($29/mo), B2B ($249 one-time) */}
+      {!isCustomTenant && (
+        <section id="pricing" className="py-16 sm:py-20 px-4 max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">
+              Simple, Transparent Pricing
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mt-1">
+              Plans for Business Owners, Service Bureaus &amp; Tax Offices
+            </h2>
+            <p className="mt-3 text-slate-600">
+              Whether you are tracking your own Schedule C business or white-labeling the portal for your tax clients, pick the model that fits you best.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Tier 1: B2C ($15/mo or $129/yr) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    B2C • Small Business
+                  </span>
+                  <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-[11px] font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setB2cBilling('monthly')}
+                      title="Switch to $15/month billing"
+                      className={`px-2 py-1 rounded-md transition ${
+                        b2cBilling === 'monthly'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setB2cBilling('annual')}
+                      title="Switch to $129/year discounted billing"
+                      className={`px-2 py-1 rounded-md transition ${
+                        b2cBilling === 'annual'
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      Annual
+                    </button>
+                  </div>
+                </div>
+
+                <h3 className="font-bold text-lg text-slate-900 mt-3">Business Owner</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  For sole proprietors, contractors &amp; single-member LLCs
+                </p>
+
+                <div className="my-5">
+                  {b2cBilling === 'monthly' ? (
+                    <>
+                      <span className="text-4xl font-extrabold text-slate-900">$15</span>
+                      <span className="text-sm text-slate-500">/month</span>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">
+                        Or save $51 with $129/year billing
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-4xl font-extrabold text-slate-900">$129</span>
+                      <span className="text-sm text-slate-500">/year</span>
+                      <p className="text-xs text-emerald-600 font-medium mt-1">
+                        Save $51/yr vs. $15/month
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Unlimited multi-year income &amp; expenses
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    All 23 IRS Schedule C categories
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Vehicle, COGS, Home Office &amp; Owner’s Draw
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    CSV bank import + PDF &amp; CSV tax reports
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCheckoutPlan(b2cBilling === 'monthly' ? 'b2c_monthly' : 'b2c_annual')
+                }
+                title="Open checkout for the Business Owner plan"
+                className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
+              >
+                {b2cBilling === 'monthly'
+                  ? 'Start Monthly ($15/mo)'
+                  : 'Start Annual ($129/yr)'}
+              </button>
+            </div>
+
+            {/* Tier 2: Service Bureau ($29/mo) */}
+            <div className="bg-slate-900 text-white rounded-2xl border-2 border-emerald-500 p-7 shadow-xl flex flex-col justify-between relative">
+              <span className="absolute -top-3.5 right-6 bg-emerald-500 text-slate-950 text-[11px] font-extrabold uppercase px-3 py-0.5 rounded-full">
+                Popular White-Label
+              </span>
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                  White-Label Subscription
+                </span>
+                <h3 className="font-bold text-lg mt-3">Service Bureau</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Low monthly subscription for tax offices &amp; service bureaus
+                </p>
+                <div className="my-5">
+                  <span className="text-4xl font-extrabold">$29</span>
+                  <span className="text-sm text-slate-400">/month</span>
+                  <p className="text-xs text-emerald-400 font-medium mt-1">
+                    Unlimited client accounts included
+                  </p>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-300 mb-6">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    Custom logo, brand name &amp; accent colors
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    Branded client invite link &amp; booking button
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    Tax Office Admin client report viewer
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    1-click client Schedule C CSV &amp; PDF export
+                  </li>
+                </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCheckoutPlan('service_bureau')}
+                title="Open checkout for the Service Bureau white-label plan"
+                className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
+              >
+                Start Service Bureau ($29/mo)
+              </button>
+            </div>
+
+            {/* Tier 3: B2B ($249 One-Time Fee) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                  B2B • One-Time License
+                </span>
+                <h3 className="font-bold text-lg text-slate-900 mt-3">B2B White-Label</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Own your branded tax office portal with one payment
+                </p>
+                <div className="my-5">
+                  <span className="text-4xl font-extrabold text-slate-900">$249</span>
+                  <span className="text-sm text-slate-500"> one-time fee</span>
+                  <p className="text-xs text-indigo-600 font-medium mt-1">
+                    Pay once — zero recurring monthly fees
+                  </p>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Full white-label logo, colors &amp; URL slug
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Unlimited Schedule C client accounts
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    Tax Office Admin dashboard &amp; role controls
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    All future tax-year updates included
+                  </li>
+                </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCheckoutPlan('b2b_onetime')}
+                title="Open checkout for the B2B one-time white-label license"
+                className="w-full text-center py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 font-semibold text-sm text-white transition"
+              >
+                Get B2B License ($249 One-Time)
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* FAQ Section */}
+      <section id="faq" className="bg-white border-t border-slate-200 py-16 px-4">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 text-center mb-8">
+            Frequently Asked Questions
+          </h2>
+          <div className="space-y-3">
+            {faqs.map((item, idx) => {
+              const isOpen = openFaq === idx;
+              return (
+                <div
+                  key={item.q}
+                  className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaq(isOpen ? -1 : idx)}
+                    className="w-full px-5 py-4 text-left flex items-center justify-between font-bold text-sm text-slate-900"
+                  >
+                    <span>{item.q}</span>
+                    {isOpen ? (
+                      <ChevronUp className="w-4 h-4 text-slate-500 shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="px-5 pb-4 text-sm text-slate-600 leading-relaxed">
+                      {item.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-slate-950 text-slate-400 py-10 px-4 text-xs">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-white font-semibold">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>{brandName}</span>
+          </div>
+          <p>
+            © {new Date().getFullYear()} {brandName}. Built for IRS Schedule C Bookkeeping &amp; Tax Preparation.
+          </p>
+          <button
+            type="button"
+            onClick={() => onOpenAuth('login')}
+            title="Open the client and tax preparer login form"
+            className="text-emerald-400 hover:underline font-semibold"
+          >
+            Client &amp; Preparer Login →
+          </button>
+        </div>
+      </footer>
+
+      {checkoutPlan && (
+        <CheckoutModal
+          planTier={checkoutPlan}
+          fallbackEmail={tenant?.support_email || 'gotaxxpro@gmail.com'}
+          onClose={() => setCheckoutPlan(null)}
+        />
+      )}
     </div>
   );
 }
