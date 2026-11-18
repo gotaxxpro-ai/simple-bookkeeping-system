@@ -25,6 +25,7 @@ import {
   Calculator,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import Tooltip from './Tooltip';
 
 const createEmptyVehicle = () => ({
   id: `veh_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -926,24 +927,28 @@ export default function BookkeepingLedger({
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           {!readOnly && (
+            <Tooltip text="Upload a checking or credit card CSV statement to auto-categorize entries" position="bottom">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Upload className="w-4 h-4" />
+                Import Bank CSV
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip text="Download your complete line-by-line IRS Form 1040 Schedule C CSV report" position="bottom">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
-              style={{ backgroundColor: primaryColor }}
+              onClick={handleExportCsv}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm"
             >
-              <Upload className="w-4 h-4" />
-              Import Bank CSV
+              <Download className="w-4 h-4" />
+              Export {selectedYear} Schedule C CSV
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm"
-          >
-            <Download className="w-4 h-4" />
-            Export {selectedYear} Schedule C CSV
-          </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -957,15 +962,17 @@ export default function BookkeepingLedger({
             </h3>
           </div>
           {!readOnly && (
-            <button
-              type="submit"
-              disabled={savingWorksheet}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-white text-xs font-semibold rounded-lg shadow-sm disabled:opacity-50 self-start sm:self-auto"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <Save className="w-3.5 h-3.5" />
-              {savingWorksheet ? 'Saving...' : 'Save Business Information'}
-            </button>
+            <Tooltip text="Save your Schedule C business name, activity, and 6-digit NAICS code">
+              <button
+                type="submit"
+                disabled={savingWorksheet}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-white text-xs font-semibold rounded-lg shadow-sm disabled:opacity-50 self-start sm:self-auto"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Save className="w-3.5 h-3.5" />
+                {savingWorksheet ? 'Saving...' : 'Save Business Information'}
+              </button>
+            </Tooltip>
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1079,14 +1086,16 @@ export default function BookkeepingLedger({
                     Add a single entry below or batch-import a bank/credit card CSV statement.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm self-start sm:self-auto"
-                >
-                  <Upload className="w-4 h-4" />
-                  Import Bank CSV
-                </button>
+                <Tooltip text="Upload a bank or credit card CSV statement to batch-import entries">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm self-start sm:self-auto"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Import Bank CSV
+                  </button>
+                </Tooltip>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
@@ -1153,15 +1162,17 @@ export default function BookkeepingLedger({
                   />
                 </div>
                 <div className="flex items-end">
-                  <button
-                    type="submit"
-                    disabled={savingTx}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    <Plus className="w-4 h-4" />
-                    {savingTx ? 'Saving...' : activeTab === 'income' ? 'Add Income' : 'Add Expense'}
-                  </button>
+                  <Tooltip text={activeTab === 'income' ? 'Record this income entry' : 'Record this deductible expense'}>
+                    <button
+                      type="submit"
+                      disabled={savingTx}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      {savingTx ? 'Saving...' : activeTab === 'income' ? 'Add Income' : 'Add Expense'}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </form>
@@ -1219,13 +1230,15 @@ export default function BookkeepingLedger({
                         <td className="py-3.5 px-6 text-right font-mono font-semibold">{formatCurrency(tx.amount)}</td>
                         {!readOnly && (
                           <td className="py-3.5 px-6 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEntry(tx.id)}
-                              className="text-slate-400 hover:text-red-600 p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <Tooltip text="Delete this entry permanently">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEntry(tx.id)}
+                                className="text-slate-400 hover:text-red-600 p-1"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                           </td>
                         )}
                       </tr>
@@ -1261,20 +1274,21 @@ export default function BookkeepingLedger({
                 </div>
 
                 {!readOnly && (
-                  <button
-                    type="button"
-                    onClick={handleAddVehicle}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Vehicle
-                  </button>
+                  <Tooltip text="Add another business vehicle to Schedule C Part IV">
+                    <button
+                      type="button"
+                      onClick={handleAddVehicle}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Vehicle
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
 
-            {/* Optional IRS Standard Mileage Rate Preview Bar */}
             <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">
@@ -1324,15 +1338,17 @@ export default function BookkeepingLedger({
                 Click <strong>Add Vehicle</strong> to log your business vehicle details, date placed in service, and annual mileage breakdown.
               </p>
               {!readOnly && (
-                <button
-                  type="button"
-                  onClick={handleAddVehicle}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add First Vehicle
-                </button>
+                <Tooltip text="Add your first business vehicle for this tax year">
+                  <button
+                    type="button"
+                    onClick={handleAddVehicle}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add First Vehicle
+                  </button>
+                </Tooltip>
               )}
             </div>
           ) : (
@@ -1371,14 +1387,16 @@ export default function BookkeepingLedger({
                     </div>
 
                     {!readOnly && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveVehicle(veh.id)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Remove Vehicle
-                      </button>
+                      <Tooltip text="Remove this vehicle from your worksheet">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveVehicle(veh.id)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Remove Vehicle
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
 
@@ -1531,17 +1549,19 @@ export default function BookkeepingLedger({
 
           {!readOnly && (worksheet.vehicles || []).length > 0 && (
             <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={savingWorksheet}
-                className="inline-flex items-center gap-2 px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <Save className="w-4 h-4" />
-                {savingWorksheet
-                  ? 'Saving Vehicles...'
-                  : `Save All Vehicles (${(worksheet.vehicles || []).length})`}
-              </button>
+              <Tooltip text="Save all vehicle details and mileage logs for this tax year">
+                <button
+                  type="submit"
+                  disabled={savingWorksheet}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Save className="w-4 h-4" />
+                  {savingWorksheet
+                    ? 'Saving Vehicles...'
+                    : `Save All Vehicles (${(worksheet.vehicles || []).length})`}
+                </button>
+              </Tooltip>
             </div>
           )}
         </form>
@@ -1649,15 +1669,17 @@ export default function BookkeepingLedger({
           </div>
           {!readOnly && (
             <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={savingWorksheet}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <Save className="w-4 h-4" />
-                {savingWorksheet ? 'Saving...' : 'Save Cost of Goods Sold'}
-              </button>
+              <Tooltip text="Save your Schedule C Part III Cost of Goods Sold figures">
+                <button
+                  type="submit"
+                  disabled={savingWorksheet}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Save className="w-4 h-4" />
+                  {savingWorksheet ? 'Saving...' : 'Save Cost of Goods Sold'}
+                </button>
+              </Tooltip>
             </div>
           )}
         </form>
@@ -1765,15 +1787,17 @@ export default function BookkeepingLedger({
           )}
           {!readOnly && (
             <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={savingWorksheet}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
-                style={{ backgroundColor: primaryColor }}
-              >
-                <Save className="w-4 h-4" />
-                {savingWorksheet ? 'Saving...' : 'Save Home Office'}
-              </button>
+              <Tooltip text="Save your Schedule C Line 30 Business Use of Home figures">
+                <button
+                  type="submit"
+                  disabled={savingWorksheet}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Save className="w-4 h-4" />
+                  {savingWorksheet ? 'Saving...' : 'Save Home Office'}
+                </button>
+              </Tooltip>
             </div>
           )}
         </form>
@@ -1826,15 +1850,17 @@ export default function BookkeepingLedger({
                   />
                 </div>
                 <div className="flex items-end">
-                  <button
-                    type="submit"
-                    disabled={savingTx}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    <Plus className="w-4 h-4" />
-                    {savingTx ? 'Saving...' : 'Add Draw'}
-                  </button>
+                  <Tooltip text="Record a non-deductible personal draw from your business">
+                    <button
+                      type="submit"
+                      disabled={savingTx}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-white text-sm font-semibold rounded-lg shadow-sm disabled:opacity-50"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      {savingTx ? 'Saving...' : 'Add Draw'}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </form>
@@ -1872,13 +1898,15 @@ export default function BookkeepingLedger({
                       </td>
                       {!readOnly && (
                         <td className="py-3.5 px-6 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEntry(tx.id)}
-                            className="text-slate-400 hover:text-red-600 p-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <Tooltip text="Delete this draw entry">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEntry(tx.id)}
+                              className="text-slate-400 hover:text-red-600 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </Tooltip>
                         </td>
                       )}
                     </tr>
@@ -1980,33 +2008,37 @@ export default function BookkeepingLedger({
 
               {!readOnly && (
                 <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={handleCopySummary}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-xs"
-                  >
-                    {copiedSummary ? (
-                      <>
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 text-slate-600" />
-                        Copy Summary
-                      </>
-                    )}
-                  </button>
+                  <Tooltip text="Copy your Schedule C totals to clipboard to paste into Gmail or webmail">
+                    <button
+                      type="button"
+                      onClick={handleCopySummary}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-xs"
+                    >
+                      {copiedSummary ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-600" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 text-slate-600" />
+                          Copy Summary
+                        </>
+                      )}
+                    </button>
+                  </Tooltip>
 
-                  <button
-                    type="button"
-                    onClick={handleEmailTaxOffice}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
-                    style={{ backgroundColor: primaryColor }}
-                  >
-                    <Mail className="w-4 h-4" />
-                    {supportEmail ? `Email ${officeName || 'Tax Office'}` : 'Email Tax Office'}
-                  </button>
+                  <Tooltip text="Open your default email app with your Schedule C totals pre-filled">
+                    <button
+                      type="button"
+                      onClick={handleEmailTaxOffice}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      <Mail className="w-4 h-4" />
+                      {supportEmail ? `Email ${officeName || 'Tax Office'}` : 'Email Tax Office'}
+                    </button>
+                  </Tooltip>
                 </div>
               )}
             </div>
@@ -2077,13 +2109,15 @@ export default function BookkeepingLedger({
                   Deselect All
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={handleToggleInvertCsvSigns}
-                className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                Flip Income / Expense Signs (Credit Card CSV Mode)
-              </button>
+              <Tooltip text="Use this if your credit card CSV lists charges as positive numbers instead of negative">
+                <button
+                  type="button"
+                  onClick={handleToggleInvertCsvSigns}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Flip Income / Expense Signs (Credit Card CSV Mode)
+                </button>
+              </Tooltip>
             </div>
             <div className="overflow-y-auto flex-1">
               <table className="w-full text-left border-collapse text-xs">
@@ -2195,18 +2229,20 @@ export default function BookkeepingLedger({
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  disabled={importingCsv || selectedCsvCount === 0}
-                  onClick={handleCommitCsvImport}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <Upload className="w-4 h-4" />
-                  {importingCsv
-                    ? 'Importing...'
-                    : `Import ${selectedCsvCount} Transaction${selectedCsvCount === 1 ? '' : 's'}`}
-                </button>
+                <Tooltip text="Save all checked rows directly into your ledger">
+                  <button
+                    type="button"
+                    disabled={importingCsv || selectedCsvCount === 0}
+                    onClick={handleCommitCsvImport}
+                    className="inline-flex items-center gap-2 px-5 py-2 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Upload className="w-4 h-4" />
+                    {importingCsv
+                      ? 'Importing...'
+                      : `Import ${selectedCsvCount} Transaction${selectedCsvCount === 1 ? '' : 's'}`}
+                  </button>
+                </Tooltip>
               </div>
             </div>
           </div>
