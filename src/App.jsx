@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/LandingPage';
 import Tooltip from './components/Tooltip';
+import LegalModal from './components/LegalModal';
 import {
   LogOut,
   ShieldCheck,
@@ -47,6 +48,7 @@ export default function App() {
   const [activeView, setActiveView] = useState('ledger');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState(null);
 
   const [isSignUp, setIsSignUp] = useState(() => {
     return window.location.hash.replace('#', '').toLowerCase() === 'signup';
@@ -55,6 +57,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [submittingAuth, setSubmittingAuth] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -211,6 +214,11 @@ export default function App() {
       }
 
       if (isSignUp) {
+        if (!acceptedTerms) {
+          throw new Error(
+            'Please agree to the Terms of Service, Privacy Policy, and Tax Disclaimer to create your account.'
+          );
+        }
         if (cleanPassword.length < 6) {
           throw new Error('Password must be at least 6 characters long.');
         }
@@ -225,6 +233,8 @@ export default function App() {
             data: {
               full_name: fullName.trim(),
               office_slug: currentOrg?.slug !== 'default' ? currentOrg?.slug : undefined,
+              terms_accepted_at: new Date().toISOString(),
+              terms_version: '1.0',
             },
           },
         });
@@ -253,7 +263,6 @@ export default function App() {
       setSubmittingAuth(false);
     }
   };
-
   const handleForgotPassword = async () => {
     setAuthError(null);
     setAuthMessage(null);
@@ -413,23 +422,62 @@ export default function App() {
             </div>
 
             {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Confirm Password
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type={showPasswordText ? 'text' : 'password'}
-                    required
-                    minLength={6}
-                    placeholder="Re-enter your password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showPasswordText ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Re-enter your password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-600 cursor-pointer pt-1 leading-relaxed">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('terms')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Terms of Service
+                    </button>
+                    ,{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('privacy')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Privacy Policy
+                    </button>
+                    , and{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('disclaimer')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Financial Accuracy &amp; Tax Disclaimer
+                    </button>
+                    .
+                  </span>
+                </label>
+              </>
             )}
 
             <Tooltip text={isSignUp ? 'Register your new bookkeeping account' : 'Sign in to your dashboard'}>
@@ -465,6 +513,15 @@ export default function App() {
             </div>
           </form>
         </div>
+
+        <LegalModal
+          isOpen={Boolean(legalModalTab)}
+          initialTab={legalModalTab || 'terms'}
+          onClose={() => setLegalModalTab(null)}
+          brandName={currentOrg.brand_name}
+          supportEmail={currentOrg.support_email}
+          primaryColor={primaryColor}
+        />
       </div>
     );
   }
@@ -613,6 +670,51 @@ export default function App() {
         )}
       </main>
 
+      <footer className="bg-white border-t border-slate-200 py-4 px-4 text-xs text-slate-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span>
+            © {new Date().getFullYear()} {currentOrg.brand_name}
+          </span>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('terms')}
+              className="hover:text-slate-900 underline"
+            >
+              Terms of Service
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('privacy')}
+              className="hover:text-slate-900 underline"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('disclaimer')}
+              className="hover:text-slate-900 underline"
+            >
+              Tax Disclaimer
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('security')}
+              className="hover:text-slate-900 underline"
+            >
+              Security Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('retention')}
+              className="hover:text-slate-900 underline"
+            >
+              Data Ownership
+            </button>
+          </div>
+        </div>
+      </footer>
+
       <ChangePasswordModal
         isOpen={showPasswordModal || mustChangePassword}
         onClose={() => {
@@ -624,6 +726,15 @@ export default function App() {
         primaryColor={primaryColor}
         isRecoveryMode={isRecoveryMode}
         forceChange={mustChangePassword}
+      />
+
+      <LegalModal
+        isOpen={Boolean(legalModalTab)}
+        initialTab={legalModalTab || 'terms'}
+        onClose={() => setLegalModalTab(null)}
+        brandName={currentOrg.brand_name}
+        supportEmail={currentOrg.support_email}
+        primaryColor={primaryColor}
       />
     </div>
   );
