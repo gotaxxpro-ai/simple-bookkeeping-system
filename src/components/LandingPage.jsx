@@ -19,7 +19,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
-export default function LandingPage({ tenant, onOpenAuth }) {
+export default function LandingPage({ tenant, onOpenAuth, onLaunchDemo, launchingDemo }) {
   const [audience, setAudience] = useState('tax_pros'); // 'tax_pros' | 'business_owners'
   const [b2cBilling, setB2cBilling] = useState('annual'); // 'monthly' ($15/mo) | 'annual' ($129/yr)
   const [openFaq, setOpenFaq] = useState(0);
@@ -138,6 +138,20 @@ export default function LandingPage({ tenant, onOpenAuth }) {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
+
+{/* Inside Top Header right-side button group */}
+{typeof onLaunchDemo === 'function' && (
+  <button
+    type="button"
+    disabled={launchingDemo}
+    onClick={onLaunchDemo}
+    title="Explore a pre-loaded read-only bookkeeping & tax office demo"
+    className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition disabled:opacity-50"
+  >
+    {launchingDemo ? 'Opening Demo...' : 'Live Demo'}
+  </button>
+)}
+          
         </div>
       </header>
 
