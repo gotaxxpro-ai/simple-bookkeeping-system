@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import LandingPage from './components/LandingPage';
+import Tooltip from './components/Tooltip';
+import LegalModal from './components/LegalModal';
 import {
   LogOut,
   ShieldCheck,
@@ -9,6 +12,8 @@ import {
   Mail,
   Lock,
   User,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
