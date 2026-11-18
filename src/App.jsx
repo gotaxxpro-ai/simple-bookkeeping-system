@@ -29,7 +29,7 @@ const DEFAULT_ORG = {
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = (true);
 
   const [showAuth, setShowAuth] = useState(() => {
     const slug = new URLSearchParams(window.location.search).get('office');
@@ -105,6 +105,12 @@ export default function App() {
       setMembership(null);
       return;
     }
+
+    const [showAuth, setShowAuth] = useState(() => {
+    const slug = new URLSearchParams(window.location.search).get('office');
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    return Boolean((slug && slug !== 'default') || hash === 'login' || hash === 'signup');
+  });
 
     let isMounted = true;
     async function loadUserMembership() {
