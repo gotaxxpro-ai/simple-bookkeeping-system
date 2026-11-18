@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CheckoutModal from './CheckoutModal';
+import LegalModal from './LegalModal';
 import {
   BookOpen,
   CheckCircle2,
@@ -671,6 +672,31 @@ export default function LandingPage({ tenant, onOpenAuth }) {
           </button>
         </div>
       </footer>
+      <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400">
+  <button type="button" onClick={() => setLegalTab('terms')} className="hover:text-white underline">
+    Terms of Service
+  </button>
+  <button type="button" onClick={() => setLegalTab('privacy')} className="hover:text-white underline">
+    Privacy Policy
+  </button>
+  <button type="button" onClick={() => setLegalTab('disclaimer')} className="hover:text-white underline">
+    Tax &amp; Accuracy Disclaimer
+  </button>
+  <button type="button" onClick={() => setLegalTab('security')} className="hover:text-white underline">
+    Security &amp; Breach Policy
+  </button>
+  <button type="button" onClick={() => setLegalTab('retention')} className="hover:text-white underline">
+    Data Ownership &amp; Termination
+  </button>
+</div>
+      <LegalModal
+  isOpen={Boolean(legalTab)}
+  initialTab={legalTab || 'terms'}
+  onClose={() => setLegalTab(null)}
+  brandName={brandName}
+  supportEmail={tenant?.support_email}
+  primaryColor={accentColor}
+/>
 
       {checkoutPlan && (
         <CheckoutModal
