@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import LandingPage from './components/LandingPage';
-import Tooltip from './components/Tooltip';
-import LegalModal from './components/LegalModal';
+import LandingPage from '../components/LandingPage';
+import Tooltip from '../components/Tooltip';
+import LegalModal from '../components/LegalModal';
 import {
   LogOut,
   ShieldCheck,
@@ -16,9 +16,9 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import BookkeepingLedger from './components/BookkeepingLedger';
-import OfficeAdminTab from './components/OfficeAdminTab';
-import ChangePasswordModal from './components/ChangePasswordModal';
+import BookkeepingLedger from '../components/BookkeepingLedger';
+import OfficeAdminTab from '../components/OfficeAdminTab';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 
 const DEFAULT_ORG = {
   id: 'default',
@@ -263,6 +263,7 @@ export default function App() {
       setSubmittingAuth(false);
     }
   };
+
   const handleForgotPassword = async () => {
     setAuthError(null);
     setAuthMessage(null);
