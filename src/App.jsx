@@ -476,4 +476,155 @@ export default function App() {
           <AlertTriangle className="w-12 h-12 text-red-600 mx-auto" />
           <h2 className="text-xl font-bold text-slate-900">Account Suspended</h2>
           <p className="text-sm text-slate-600">
-            Your access to <strong>{currentOrg.brand_name}</strong> has
+            Your access to <strong>{currentOrg.brand_name}</strong> has been paused by your tax office administrator.
+            {currentOrg.support_email && (
+              <>
+                {' '}
+                Please contact{' '}
+                <a
+                  href={`mailto:${currentOrg.support_email}`}
+                  className="font-semibold text-emerald-700 underline"
+                >
+                  {currentOrg.support_email}
+                </a>{' '}
+                for assistance.
+              </>
+            )}
+          </p>
+          <Tooltip text="Sign out of this suspended account">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
+
+  const userRole = (membership?.role || 'client').toLowerCase();
+  const isAdmin = userRole === 'super_admin' || userRole === 'office_admin';
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {currentOrg?.logo_url ? (
+              <img src={currentOrg.logo_url} alt={currentOrg.brand_name} className="h-8 object-contain" />
+            ) : (
+              <span
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {(currentOrg.brand_name || 'S')[0]}
+              </span>
+            )}
+            <div>
+              <div className="text-base font-bold text-slate-900 leading-tight">
+                {currentOrg.brand_name}
+              </div>
+              <div className="text-[11px] text-slate-500">{currentOrg.tagline}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                <Tooltip text="Open your personal business bookkeeping & Schedule C ledger" position="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('ledger')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      activeView === 'ledger'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    My Books
+                  </button>
+                </Tooltip>
+                <Tooltip text="Manage white-label branding, client logins, and tax office reports" position="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('admin')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      activeView === 'admin'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
+                  </button>
+                </Tooltip>
+              </div>
+            )}
+
+            <Tooltip text="Change your login password" position="bottom">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecoveryMode(false);
+                  setShowPasswordModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                Change Password
+              </button>
+            </Tooltip>
+
+            <Tooltip text="Sign out of your account" position="bottom">
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign Out
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 px-4 py-6">
+        {isAdmin && activeView === 'admin' ? (
+          <OfficeAdminTab
+            membership={membership}
+            currentOrg={currentOrg}
+            onOrgUpdated={(updatedOrg) => setCurrentOrg(updatedOrg)}
+          />
+        ) : (
+          <BookkeepingLedger
+            targetUserId={session.user.id}
+            targetUserName={membership?.full_name || session.user.email}
+            readOnly={false}
+            primaryColor={primaryColor}
+            supportEmail={currentOrg?.support_email}
+            officeName={currentOrg?.brand_name}
+          />
+        )}
+      </main>
+
+      <ChangePasswordModal
+        isOpen={showPasswordModal || mustChangePassword}
+        onClose={() => {
+          if (!mustChangePassword) {
+            setShowPasswordModal(false);
+            setIsRecoveryMode(false);
+          }
+        }}
+        primaryColor={primaryColor}
+        isRecoveryMode={isRecoveryMode}
+        forceChange={mustChangePassword}
+      />
+    </div>
+  );
+}
