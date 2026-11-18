@@ -26,9 +26,17 @@ export default function LandingPage({ tenant, onOpenAuth }) {
   const [logoError, setLogoError] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [legalTab, setLegalTab] = useState(null);
 
-const [legalTab, setLegalTab] = useState(null);
-  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('checkout') === 'success') {
+        setCheckoutSuccess(true);
+      }
+    }
+  }, []);
+
   const triggerAuth = (mode = 'login') => {
     if (typeof onOpenAuth === 'function') {
       onOpenAuth(mode);
@@ -37,7 +45,7 @@ const [legalTab, setLegalTab] = useState(null);
       window.location.hash = mode === 'signup' ? 'signup' : 'login';
     }
   };
-  
+
   const isCustomTenant = tenant && tenant.slug && tenant.slug !== 'default';
   const brandName = tenant?.brand_name || 'Simple Bookkeeping System';
   const accentColor = tenant?.primary_color || '#059669';
@@ -71,7 +79,7 @@ const [legalTab, setLegalTab] = useState(null);
           </span>
           <button
             type="button"
-            onClick={() => onOpenAuth('signup')}
+            onClick={() => triggerAuth('signup')}
             title="Finish setting up your account login"
             className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800"
           >
@@ -654,51 +662,66 @@ const [legalTab, setLegalTab] = useState(null);
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer with 5 Legal & Policy Pages */}
       <footer className="bg-slate-950 text-slate-400 py-10 px-4 text-xs">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-white font-semibold">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>{brandName}</span>
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-white font-semibold">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>{brandName}</span>
+            </div>
+            <p className="text-center">
+              © {new Date().getFullYear()} {brandName}. Built for IRS Schedule C Bookkeeping &amp; Tax Preparation.
+            </p>
+            <button
+              type="button"
+              onClick={() => triggerAuth('login')}
+              title="Open the client and tax preparer login form"
+              className="text-emerald-400 hover:underline font-semibold"
+            >
+              Client &amp; Preparer Login →
+            </button>
           </div>
-          <p>
-            © {new Date().getFullYear()} {brandName}. Built for IRS Schedule C Bookkeeping &amp; Tax Preparation.
-          </p>
-          <button
-            type="button"
-            onClick={() => triggerAuth('login')}
-            title="Open the client and tax preparer login form"
-            className="text-emerald-400 hover:underline font-semibold"
-          >
-            Client &amp; Preparer Login →
-          </button>
+
+          <div className="pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-slate-400">
+            <button
+              type="button"
+              onClick={() => setLegalTab('terms')}
+              className="hover:text-white underline"
+            >
+              Terms of Service
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalTab('privacy')}
+              className="hover:text-white underline"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalTab('disclaimer')}
+              className="hover:text-white underline"
+            >
+              Tax &amp; Accuracy Disclaimer
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalTab('security')}
+              className="hover:text-white underline"
+            >
+              Security &amp; Breach Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalTab('retention')}
+              className="hover:text-white underline"
+            >
+              Data Ownership &amp; Termination
+            </button>
+          </div>
         </div>
       </footer>
-      <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400">
-  <button type="button" onClick={() => setLegalTab('terms')} className="hover:text-white underline">
-    Terms of Service
-  </button>
-  <button type="button" onClick={() => setLegalTab('privacy')} className="hover:text-white underline">
-    Privacy Policy
-  </button>
-  <button type="button" onClick={() => setLegalTab('disclaimer')} className="hover:text-white underline">
-    Tax &amp; Accuracy Disclaimer
-  </button>
-  <button type="button" onClick={() => setLegalTab('security')} className="hover:text-white underline">
-    Security &amp; Breach Policy
-  </button>
-  <button type="button" onClick={() => setLegalTab('retention')} className="hover:text-white underline">
-    Data Ownership &amp; Termination
-  </button>
-</div>
-      <LegalModal
-  isOpen={Boolean(legalTab)}
-  initialTab={legalTab || 'terms'}
-  onClose={() => setLegalTab(null)}
-  brandName={brandName}
-  supportEmail={tenant?.support_email}
-  primaryColor={accentColor}
-/>
 
       {checkoutPlan && (
         <CheckoutModal
@@ -707,6 +730,15 @@ const [legalTab, setLegalTab] = useState(null);
           onClose={() => setCheckoutPlan(null)}
         />
       )}
+
+      <LegalModal
+        isOpen={Boolean(legalTab)}
+        initialTab={legalTab || 'terms'}
+        onClose={() => setLegalTab(null)}
+        brandName={brandName}
+        supportEmail={tenant?.support_email}
+        primaryColor={accentColor}
+      />
     </div>
   );
 }
