@@ -17,9 +17,14 @@ import {
   BookOpen,
   ArrowLeft,
   Search,
+  KeyRound,
+  X,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import BookkeepingLedger from './BookkeepingLedger';
+import Tooltip from './Tooltip';
 
 export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated }) {
   const isSuperAdmin = (membership?.role || '').toLowerCase() === 'super_admin';
@@ -32,12 +37,10 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
 
-  // Directory filters
   const [roleFilter, setRoleFilter] = useState('all');
   const [officeFilter, setOfficeFilter] = useState('all');
   const [memberSearch, setMemberSearch] = useState('');
 
-  // Add Client form state
   const [showAddClientForm, setShowAddClientForm] = useState(false);
   const [newClient, setNewClient] = useState({
     full_name: '',
@@ -45,13 +48,17 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     password: '',
     organization_id: '',
   });
+  const [showNewClientPassword, setShowNewClientPassword] = useState(false);
   const [creatingClient, setCreatingClient] = useState(false);
 
-  // Tax offices list (super_admin)
+  const [resetTargetMember, setResetTargetMember] = useState(null);
+  const [tempResetPassword, setTempResetPassword] = useState('');
+  const [showResetPasswordText, setShowResetPasswordText] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
+
   const [organizations, setOrganizations] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
 
-  // White-label branding editor
   const [brandForm, setBrandForm] = useState({
     brand_name: '',
     tagline: '',
@@ -61,7 +68,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   });
   const [savingBrand, setSavingBrand] = useState(false);
 
-  // New Tax Office provisioning (super_admin)
   const [showNewOfficeForm, setShowNewOfficeForm] = useState(false);
   const [newOffice, setNewOffice] = useState({
     slug: '',
@@ -189,11 +195,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         throw new Error('No tax office organization selected or linked to your account.');
       }
 
+      const cleanPassword = newClient.password.trim();
+      if (cleanPassword.length < 6) {
+        throw new Error('Temporary password must be at least 6 characters long.');
+      }
+
       const { data, error } = await supabase.functions.invoke('create-office-client', {
         body: {
           full_name: newClient.full_name.trim(),
           email: newClient.email.trim().toLowerCase(),
-          password: newClient.password,
+          password: cleanPassword,
           organization_id: targetOrgId,
         },
       });
@@ -206,7 +217,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
             if (errBody?.error) detailedMsg = errBody.error;
           }
         } catch (_) {
-          // Fall back to generic message if response is not JSON
+          // Ignore non-JSON error body
         }
         throw new Error(detailedMsg);
       }
@@ -218,6 +229,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         text: `Client account created for ${data.client.full_name} (${data.client.email}).`,
       });
       setNewClient({ full_name: '', email: '', password: '', organization_id: '' });
+      setShowNewClientPassword(false);
       setShowAddClientForm(false);
       fetchMembers();
     } catch (err) {
@@ -291,6 +303,56 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     }
   };
 
+  const handleAdminResetPassword = async (e) => {
+    e.preventDefault();
+    if (!resetTargetMember) return;
+
+    const cleanPassword = tempResetPassword.trim();
+    if (cleanPassword.length < 6) {
+      setStatusMessage({ type: 'error', text: 'Temporary password must be at least 6 characters long.' });
+      return;
+    }
+
+    setResettingPassword(true);
+    setStatusMessage(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-client-password', {
+        body: {
+          target_user_id: resetTargetMember.user_id,
+          new_password: cleanPassword,
+        },
+      });
+
+      if (error) {
+        let detailedMsg = error.message;
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const errBody = await error.context.json();
+            if (errBody?.error) detailedMsg = errBody.error;
+          }
+        } catch (_) {
+          // Ignore non-JSON error body
+        }
+        throw new Error(detailedMsg);
+      }
+
+      if (data?.error) throw new Error(data.error);
+
+      setStatusMessage({
+        type: 'success',
+        text: `Temporary password updated for ${resetTargetMember.full_name || resetTargetMember.email}. They will be prompted to create their own password on next login.`,
+      });
+      setResetTargetMember(null);
+      setTempResetPassword('');
+      setShowResetPasswordText(false);
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message });
+    } finally {
+      setResettingPassword(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleCreateTaxOffice = async (e) => {
     e.preventDefault();
     setCreatingOffice(true);
@@ -304,7 +366,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           primary_color: newOffice.primary_color,
           support_email: newOffice.support_email.trim() || newOffice.admin_email.trim(),
           admin_email: newOffice.admin_email.trim(),
-          admin_password: newOffice.admin_password,
+          admin_password: newOffice.admin_password.trim(),
         },
       });
       if (error) {
@@ -384,7 +446,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
 
     return true;
   });
-
   if (!isSuperAdmin && !isOfficeAdmin) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
@@ -398,14 +459,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     return (
       <div className="space-y-6 max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-5 py-4 rounded-2xl border border-slate-200 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setInspectingClient(null)}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to {isSuperAdmin ? 'Platform & Office Admin' : 'Office Clients'}
-          </button>
+          <Tooltip text="Return to the client & office directory" position="bottom">
+            <button
+              type="button"
+              onClick={() => setInspectingClient(null)}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to {isSuperAdmin ? 'Platform & Office Admin' : 'Office Clients'}
+            </button>
+          </Tooltip>
           <div className="text-xs text-slate-500">
             Client Email: <span className="font-mono text-slate-700">{inspectingClient.email || '—'}</span>
           </div>
@@ -453,14 +516,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                 White-Label Branding ({resolvedOrg.slug})
               </h2>
             </div>
-            <a
-              href={`${window.location.origin}/?office=${resolvedOrg.slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
-            >
-              Client Signup &amp; Portal Link <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+            <Tooltip text="Open your branded client sign-in and registration URL in a new tab" position="bottom">
+              <a
+                href={`${window.location.origin}/?office=${resolvedOrg.slug}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+              >
+                Client Signup &amp; Portal Link <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </Tooltip>
           </div>
           <form onSubmit={handleSaveBranding} className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -522,14 +587,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
               </div>
             </div>
             <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={savingBrand}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {savingBrand ? 'Saving...' : 'Save Branding'}
-              </button>
+              <Tooltip text="Save your tax office name, tagline, logo, and primary color">
+                <button
+                  type="submit"
+                  disabled={savingBrand}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingBrand ? 'Saving...' : 'Save Branding'}
+                </button>
+              </Tooltip>
             </div>
           </form>
         </div>
@@ -553,14 +620,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                 : `${filteredMembers.length} of ${members.length}`}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAddClientForm(!showAddClientForm)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm"
-          >
-            <UserPlus className="w-4 h-4" />
-            {showAddClientForm ? 'Cancel' : 'Add Client'}
-          </button>
+          <Tooltip text="Create a new client login with a temporary password">
+            <button
+              type="button"
+              onClick={() => setShowAddClientForm(!showAddClientForm)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm"
+            >
+              <UserPlus className="w-4 h-4" />
+              {showAddClientForm ? 'Cancel' : 'Add Client'}
+            </button>
+          </Tooltip>
         </div>
 
         {/* Role Filter Pills + Tax Office Filter + Search Box */}
@@ -664,15 +733,25 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Temporary Password *</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  placeholder="Minimum 6 characters"
-                  value={newClient.password}
-                  onChange={(e) => setNewClient({ ...newClient, password: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewClientPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Minimum 6 characters"
+                    value={newClient.password}
+                    onChange={(e) => setNewClient({ ...newClient, password: e.target.value })}
+                    className="w-full pr-10 pl-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewClientPassword(!showNewClientPassword)}
+                    aria-label={showNewClientPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1"
+                  >
+                    {showNewClientPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               {isSuperAdmin && organizations.length > 0 && (
                 <div className="md:col-span-3">
@@ -698,14 +777,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
               )}
             </div>
             <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={creatingClient}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
-              >
-                <UserPlus className="w-4 h-4" />
-                {creatingClient ? 'Creating Client Account...' : 'Create Client Login'}
-              </button>
+              <Tooltip text="Provision this client login and link them to your tax office">
+                <button
+                  type="submit"
+                  disabled={creatingClient}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  {creatingClient ? 'Creating Client Account...' : 'Create Client Login'}
+                </button>
+              </Tooltip>
             </div>
           </form>
         )}
@@ -801,28 +882,58 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                       </td>
                       <td className="py-3.5 px-6 text-right">
                         <div className="inline-flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setInspectingClient(member)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200"
-                          >
-                            <BookOpen className="w-3.5 h-3.5" />
-                            View Books
-                          </button>
+                          <Tooltip text="Inspect this client's bookkeeping and Schedule C worksheets (read-only)">
+                            <button
+                              type="button"
+                              onClick={() => setInspectingClient(member)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200"
+                            >
+                              <BookOpen className="w-3.5 h-3.5" />
+                              View Books
+                            </button>
+                          </Tooltip>
+
                           {member.user_id !== membership?.user_id &&
                             memberRole !== 'super_admin' &&
                             (isSuperAdmin || memberRole === 'client') && (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleMemberStatus(member)}
-                                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                              <Tooltip text="Set a new temporary password for this client">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResetTargetMember(member);
+                                    setTempResetPassword('');
+                                    setShowResetPasswordText(false);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors"
+                                >
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                  Reset Password
+                                </button>
+                              </Tooltip>
+                            )}
+
+                          {member.user_id !== membership?.user_id &&
+                            memberRole !== 'super_admin' &&
+                            (isSuperAdmin || memberRole === 'client') && (
+                              <Tooltip
+                                text={
                                   member.is_active
-                                    ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                                    : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
-                                }`}
+                                    ? "Pause this client's portal login access"
+                                    : "Restore this client's portal login access"
+                                }
                               >
-                                {member.is_active ? 'Suspend' : 'Activate'}
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleMemberStatus(member)}
+                                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                    member.is_active
+                                      ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                                      : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-900'
+                                  }`}
+                                >
+                                  {member.is_active ? 'Suspend' : 'Activate'}
+                                </button>
+                              </Tooltip>
                             )}
                         </div>
                       </td>
@@ -843,14 +954,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
               <ShieldCheck className="w-5 h-5 text-emerald-600" />
               <h2 className="text-lg font-semibold text-slate-800">Tax Office Network Management</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowNewOfficeForm(!showNewOfficeForm)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg"
-            >
-              <Plus className="w-4 h-4" />
-              {showNewOfficeForm ? 'Cancel' : 'Add Tax Office'}
-            </button>
+            <Tooltip text="Provision a new white-label tax office tenant and admin login">
+              <button
+                type="button"
+                onClick={() => setShowNewOfficeForm(!showNewOfficeForm)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg"
+              >
+                <Plus className="w-4 h-4" />
+                {showNewOfficeForm ? 'Cancel' : 'Add Tax Office'}
+              </button>
+            </Tooltip>
           </div>
 
           {showNewOfficeForm && (
@@ -940,14 +1053,16 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                 </div>
               </div>
               <div className="pt-2 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={creatingOffice}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
-                >
-                  <Building2 className="w-4 h-4" />
-                  {creatingOffice ? 'Creating Office & Login...' : 'Create Tax Office'}
-                </button>
+                <Tooltip text="Create this white-label tax office and its administrator login">
+                  <button
+                    type="submit"
+                    disabled={creatingOffice}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg shadow-sm disabled:opacity-50"
+                  >
+                    <Building2 className="w-4 h-4" />
+                    {creatingOffice ? 'Creating Office & Login...' : 'Create Tax Office'}
+                  </button>
+                </Tooltip>
               </div>
             </form>
           )}
@@ -1018,13 +1133,15 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                       </td>
                       <td className="py-3.5 px-6 text-right">
                         {org.slug !== 'default' && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleOrgStatus(org)}
-                            className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
-                          >
-                            {org.is_active ? 'Suspend' : 'Activate'}
-                          </button>
+                          <Tooltip text={org.is_active ? 'Suspend this tax office portal' : 'Re-activate this tax office portal'}>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleOrgStatus(org)}
+                              className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
+                            >
+                              {org.is_active ? 'Suspend' : 'Activate'}
+                            </button>
+                          </Tooltip>
                         )}
                       </td>
                     </tr>
@@ -1035,6 +1152,87 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           </div>
         </div>
       )}
+
+      {/* RESET CLIENT TEMPORARY PASSWORD MODAL */}
+      {resetTargetMember && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">Set Temporary Password</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetTargetMember(null);
+                  setTempResetPassword('');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminResetPassword} className="p-6 space-y-4">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-0.5">
+                <div className="font-semibold text-slate-900">
+                  {resetTargetMember.full_name || 'Client Account'}
+                </div>
+                <div className="font-mono text-slate-500">{resetTargetMember.email}</div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  New Temporary Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showResetPasswordText ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Minimum 6 characters"
+                    value={tempResetPassword}
+                    onChange={(e) => setTempResetPassword(e.target.value)}
+                    className="w-full pr-10 pl-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPasswordText(!showResetPasswordText)}
+                    aria-label={showResetPasswordText ? 'Hide password' : 'Show password'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1"
+                  >
+                    {showResetPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  The client will be automatically prompted to replace this with their own permanent password on their next sign-in.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetTargetMember(null);
+                    setTempResetPassword('');
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resettingPassword}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                >
+                  {resettingPassword ? 'Updating...' : 'Set Temporary Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
-}  
+}
