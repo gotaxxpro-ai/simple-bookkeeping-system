@@ -27,6 +27,8 @@ export default function LandingPage({ tenant, onOpenAuth }) {
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
 
+const [legalTab, setLegalTab] = useState(null);
+  
   const triggerAuth = (mode = 'login') => {
     if (typeof onOpenAuth === 'function') {
       onOpenAuth(mode);
