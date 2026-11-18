@@ -521,8 +521,8 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
               >
                 {b2cBilling === 'monthly'
-                  ? 'Start Monthly ($15/mo)'
-                  : 'Start Annual ($129/yr)'}
+  ? 'Start 7-Day Free Trial ($15/mo after)'
+  : 'Start 7-Day Free Trial ($129/yr after)'}
               </button>
             </div>
 
