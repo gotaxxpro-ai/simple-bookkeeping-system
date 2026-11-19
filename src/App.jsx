@@ -49,6 +49,8 @@ export default function App() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState(null);
+  const [launchingDemo, setLaunchingDemo] = useState(false);
+  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
 
   const [isSignUp, setIsSignUp] = useState(() => {
     return window.location.hash.replace('#', '').toLowerCase() === 'signup';
@@ -120,6 +122,37 @@ export default function App() {
       setAuthLoading(false);
     });
 
+const handleLaunchDemo = async () => {
+    setLaunchingDemo(true);
+    setAuthError(null);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: 'demo@simplebookkeepingsystem.com',
+        password: 'DemoPreview2026!',
+      });
+      if (error) throw error;
+      if (data?.session) {
+        setSession(data.session);
+        // Clean ?demo=true from the URL bar after logging in
+        if (typeof window !== 'undefined' && window.location.search.includes('demo=')) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }
+    } catch (err) {
+      setAuthError(`Demo unavailable: ${err.message}`);
+      setShowAuth(true);
+    } finally {
+      setLaunchingDemo(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') === 'true' && !authLoading && !session && !launchingDemo) {
+      handleLaunchDemo();
+    }
+  }, [authLoading, session]);
+    
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, currentSession) => {
