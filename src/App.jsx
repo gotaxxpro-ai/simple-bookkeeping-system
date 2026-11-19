@@ -20,31 +20,6 @@ import BookkeepingLedger from './components/BookkeepingLedger';
 import OfficeAdminTab from './components/OfficeAdminTab';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
-// 1. Add state inside App()
-const [launchingDemo, setLaunchingDemo] = useState(false);
-const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
-
-// 2. Add 1-click demo login handler inside App()
-const handleLaunchDemo = async () => {
-  setLaunchingDemo(true);
-  setAuthError(null);
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: 'demo@simplebookkeepingsystem.com',
-      password: 'DemoPreview2026!',
-    });
-    if (error) throw error;
-    if (data?.session) {
-      setSession(data.session);
-    }
-  } catch (err) {
-    setAuthError(`Demo unavailable: ${err.message}`);
-    setShowAuth(true);
-  } finally {
-    setLaunchingDemo(false);
-  }
-};
-
 const DEFAULT_ORG = {
   id: 'default',
   slug: 'default',
@@ -331,13 +306,7 @@ export default function App() {
 
   if (!session) {
     if (!showAuth) {
-      return // 3. Pass onLaunchDemo & launchingDemo to <LandingPage />
-<LandingPage
-  tenant={currentOrg}
-  onOpenAuth={handleOpenAuth}
-  onLaunchDemo={handleLaunchDemo}
-  launchingDemo={launchingDemo}
-/>;
+      return <LandingPage tenant={currentOrg} onOpenAuth={handleOpenAuth} />;
     }
 
     return (
