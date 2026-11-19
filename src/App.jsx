@@ -34,6 +34,7 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [launchingDemo, setLaunchingDemo] = useState(false);
 
   const [showAuth, setShowAuth] = useState(() => {
     const slug = new URLSearchParams(window.location.search).get('office');
@@ -49,8 +50,6 @@ export default function App() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState(null);
-  const [launchingDemo, setLaunchingDemo] = useState(false);
-  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
 
   const [isSignUp, setIsSignUp] = useState(() => {
     return window.location.hash.replace('#', '').toLowerCase() === 'signup';
@@ -66,6 +65,7 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState(null);
 
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
   const primaryColor = currentOrg?.primary_color || '#059669';
 
   useEffect(() => {
@@ -122,37 +122,6 @@ export default function App() {
       setAuthLoading(false);
     });
 
-const handleLaunchDemo = async () => {
-    setLaunchingDemo(true);
-    setAuthError(null);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: 'demo@simplebookkeepingsystem.com',
-        password: 'DemoPreview2026!',
-      });
-      if (error) throw error;
-      if (data?.session) {
-        setSession(data.session);
-        // Clean ?demo=true from the URL bar after logging in
-        if (typeof window !== 'undefined' && window.location.search.includes('demo=')) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      }
-    } catch (err) {
-      setAuthError(`Demo unavailable: ${err.message}`);
-      setShowAuth(true);
-    } finally {
-      setLaunchingDemo(false);
-    }
-  };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('demo') === 'true' && !authLoading && !session && !launchingDemo) {
-      handleLaunchDemo();
-    }
-  }, [authLoading, session]);
-    
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, currentSession) => {
@@ -165,6 +134,40 @@ const handleLaunchDemo = async () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') !== 'true' || authLoading || session || launchingDemo) return;
+
+    let isMounted = true;
+    async function autoLoginDemo() {
+      setLaunchingDemo(true);
+      setAuthError(null);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: 'demo@simplebookkeepingsystem.com',
+          password: 'DemoPreview2026!',
+        });
+        if (error) throw error;
+        if (data?.session && isMounted) {
+          setSession(data.session);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAuthError(`Demo unavailable: ${err.message}`);
+          setShowAuth(true);
+        }
+      } finally {
+        if (isMounted) setLaunchingDemo(false);
+      }
+    }
+
+    autoLoginDemo();
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, session, launchingDemo]);
 
   useEffect(() => {
     if (mustChangePassword) {
@@ -329,42 +332,13 @@ const handleLaunchDemo = async () => {
     handleBackToHome();
   };
 
-  if (authLoading || (session && loadingMembership)) {
+  if (authLoading || launchingDemo || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
-        Loading workspace...
+        {launchingDemo ? 'Launching interactive demo...' : 'Loading workspace...'}
       </div>
     );
   }
-  if (authLoading || launchingDemo || (session && loadingMembership)) {
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
-      {launchingDemo ? 'Launching interactive demo...' : 'Loading workspace...'}
-    </div>
-  );
-}
-
-if (!session) {
-  if (!showAuth) {
-    return (
-      <LandingPage
-        tenant={currentOrg}
-        onOpenAuth={handleOpenAuth}
-        onLaunchDemo={handleLaunchDemo}
-        launchingDemo={launchingDemo}
-      />
-    );
-  }
-  <BookkeepingLedger
-  targetUserId={session.user.id}
-  targetUserName={
-    isDemoUser ? 'Interactive Demo Business' : membership?.full_name || session.user.email
-  }
-  readOnly={isDemoUser}
-  primaryColor={primaryColor}
-  supportEmail={currentOrg?.support_email}
-  officeName={currentOrg?.brand_name}
-/>
 
   if (!session) {
     if (!showAuth) {
@@ -686,19 +660,21 @@ if (!session) {
               </div>
             )}
 
-            <Tooltip text="Change your login password" position="bottom">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRecoveryMode(false);
-                  setShowPasswordModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                Change Password
-              </button>
-            </Tooltip>
+            {!isDemoUser && (
+              <Tooltip text="Change your login password" position="bottom">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRecoveryMode(false);
+                    setShowPasswordModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                  Change Password
+                </button>
+              </Tooltip>
+            )}
 
             <Tooltip text="Sign out of your account" position="bottom">
               <button
@@ -707,12 +683,30 @@ if (!session) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Sign Out
+                {isDemoUser ? 'Exit Demo' : 'Sign Out'}
               </button>
             </Tooltip>
           </div>
         </div>
       </header>
+
+      {isDemoUser && (
+        <div className="bg-emerald-900 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-center gap-3">
+          <span>
+            <strong>Live Demo Mode:</strong> You are exploring a read-only sample 2026 Schedule C ledger.
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              handleOpenAuth('signup');
+            }}
+            className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
+          >
+            Start Your 7-Day Free Trial &rarr;
+          </button>
+        </div>
+      )}
 
       <main className="flex-1 px-4 py-6">
         {isAdmin && activeView === 'admin' ? (
@@ -724,8 +718,10 @@ if (!session) {
         ) : (
           <BookkeepingLedger
             targetUserId={session.user.id}
-            targetUserName={membership?.full_name || session.user.email}
-            readOnly={false}
+            targetUserName={
+              isDemoUser ? 'Interactive Demo Business' : membership?.full_name || session.user.email
+            }
+            readOnly={isDemoUser}
             primaryColor={primaryColor}
             supportEmail={currentOrg?.support_email}
             officeName={currentOrg?.brand_name}
