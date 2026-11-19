@@ -35,6 +35,12 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const [showAuth, setShowAuth] = useState(() => {
+    const slug = new URLSearchParams(window.location.search).get('office');
+    const hash = window.location.hash.replace('#', '').toLowerCase();
+    return Boolean((slug && slug !== 'default') || hash === 'login' || hash === 'signup');
+  });
+
   const [currentOrg, setCurrentOrg] = useState(DEFAULT_ORG);
   const [membership, setMembership] = useState(null);
   const [loadingMembership, setLoadingMembership] = useState(false);
@@ -42,17 +48,49 @@ export default function App() {
   const [activeView, setActiveView] = useState('ledger');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState(null);
+  const [launchingDemo, setLaunchingDemo] = useState(false);
 
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(() => {
+    return window.location.hash.replace('#', '').toLowerCase() === 'signup';
+  });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showPasswordText, setShowPasswordText] = useState(false);
   const [submittingAuth, setSubmittingAuth] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
 
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
   const primaryColor = currentOrg?.primary_color || '#059669';
+
+  useEffect(() => {
+    const syncAuthFromHash = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (hash === 'login') {
+        setIsSignUp(false);
+        setAuthError(null);
+        setAuthMessage(null);
+        setConfirmPassword('');
+        setShowPasswordText(false);
+        setShowAuth(true);
+      } else if (hash === 'signup') {
+        setIsSignUp(true);
+        setAuthError(null);
+        setAuthMessage(null);
+        setConfirmPassword('');
+        setShowPasswordText(false);
+        setShowAuth(true);
+      }
+    };
+
+    window.addEventListener('hashchange', syncAuthFromHash);
+    return () => window.removeEventListener('hashchange', syncAuthFromHash);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -137,6 +175,52 @@ export default function App() {
     };
   }, [session?.user?.id]);
 
+  const handleOpenAuth = (mode = 'login') => {
+    const signupMode = mode === 'signup';
+    setIsSignUp(signupMode);
+    setAuthError(null);
+    setAuthMessage(null);
+    setConfirmPassword('');
+    setShowPasswordText(false);
+    setShowAuth(true);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}#${signupMode ? 'signup' : 'login'}`
+      );
+    }
+  };
+
+  const handleBackToHome = () => {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+    setAuthError(null);
+    setAuthMessage(null);
+    setShowAuth(false);
+  };
+
+  const handleLaunchDemo = async () => {
+    setLaunchingDemo(true);
+    setAuthError(null);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: 'demo@simplebookkeepingsystem.com',
+        password: 'DemoPreview2026!',
+      });
+      if (error) throw error;
+      if (data?.session) {
+        setSession(data.session);
+      }
+    } catch (err) {
+      setAuthError(`Demo unavailable: ${err.message}`);
+      setShowAuth(true);
+    } finally {
+      setLaunchingDemo(false);
+    }
+  };
+
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setSubmittingAuth(true);
@@ -145,29 +229,58 @@ export default function App() {
 
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
+
+      if (!cleanEmail || !cleanPassword) {
+        throw new Error('Please enter both your email address and password.');
+      }
+
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        if (!acceptedTerms) {
+          throw new Error(
+            'Please agree to the Terms of Service, Privacy Policy, and Tax Disclaimer to create your account.'
+          );
+        }
+        if (cleanPassword.length < 6) {
+          throw new Error('Password must be at least 6 characters long.');
+        }
+        if (cleanPassword !== confirmPassword.trim()) {
+          throw new Error('Passwords do not match.');
+        }
+
+        const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
-          password,
+          password: cleanPassword,
           options: {
             data: {
               full_name: fullName.trim(),
               office_slug: currentOrg?.slug !== 'default' ? currentOrg?.slug : undefined,
+              terms_accepted_at: new Date().toISOString(),
+              terms_version: '1.0',
             },
           },
         });
         if (error) throw error;
-        setAuthMessage('Account created! Check your email to confirm or sign in.');
-        setIsSignUp(false);
+
+        if (data?.session) {
+          setSession(data.session);
+        } else {
+          setAuthMessage('Account created! You can now sign in with your password.');
+          setConfirmPassword('');
+          setIsSignUp(false);
+        }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
-          password,
+          password: cleanPassword,
         });
         if (error) throw error;
+        if (data?.session) {
+          setSession(data.session);
+        }
       }
     } catch (err) {
-      setAuthError(err.message || 'Authentication failed.');
+      setAuthError(err.message || 'Authentication failed. Check your email and password.');
     } finally {
       setSubmittingAuth(false);
     }
@@ -202,7 +315,9 @@ export default function App() {
     await supabase.auth.signOut();
     setMembership(null);
     setActiveView('ledger');
+    handleBackToHome();
   };
+
   if (authLoading || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
@@ -212,8 +327,31 @@ export default function App() {
   }
 
   if (!session) {
+    if (!showAuth) {
+      return (
+        <LandingPage
+          tenant={currentOrg}
+          onOpenAuth={handleOpenAuth}
+          onLaunchDemo={handleLaunchDemo}
+          launchingDemo={launchingDemo}
+        />
+      );
+    }
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md mb-3">
+          <Tooltip text="Return to the home page and pricing plans" position="bottom">
+            <button
+              type="button"
+              onClick={handleBackToHome}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              &larr; Back to Home
+            </button>
+          </Tooltip>
+        </div>
+
         <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div
             className="px-6 py-6 text-white text-center space-y-1.5"
@@ -277,45 +415,143 @@ export default function App() {
             </div>
 
             <div>
-              
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  {isSignUp ? 'Create Password' : 'Password'}
+                </label>
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="password"
+                  type={showPasswordText ? 'text' : 'password'}
                   required
                   minLength={6}
-                  placeholder="••••••••"
+                  placeholder={isSignUp ? 'Choose a password (min 6 chars)' : '••••••••'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                  className="w-full pl-9 pr-10 py-2 border border-slate-300 rounded-lg text-sm"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordText(!showPasswordText)}
+                  aria-label={showPasswordText ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1"
+                >
+                  {showPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={submittingAuth}
-              className="w-full py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {submittingAuth ? 'Please wait...' : isSignUp ? 'Create Client Account' : 'Sign In'}
-            </button>
+            {isSignUp && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type={showPasswordText ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      placeholder="Re-enter your password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 text-xs text-slate-600 cursor-pointer pt-1 leading-relaxed">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('terms')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Terms of Service
+                    </button>
+                    ,{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('privacy')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Privacy Policy
+                    </button>
+                    , and{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('disclaimer')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Financial Accuracy &amp; Tax Disclaimer
+                    </button>
+                    .
+                  </span>
+                </label>
+              </>
+            )}
+
+            <Tooltip text={isSignUp ? 'Register your new bookkeeping account' : 'Sign in to your dashboard'}>
+              <button
+                type="submit"
+                disabled={submittingAuth}
+                className="w-full py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {submittingAuth ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+              </button>
+            </Tooltip>
 
             <div className="text-center pt-1">
               <button
                 type="button"
                 onClick={() => {
-                  setIsSignUp(!isSignUp);
+                  const nextIsSignUp = !isSignUp;
+                  setIsSignUp(nextIsSignUp);
+                  setConfirmPassword('');
                   setAuthError(null);
                   setAuthMessage(null);
+                  window.history.replaceState(
+                    null,
+                    '',
+                    `${window.location.pathname}${window.location.search}#${nextIsSignUp ? 'signup' : 'login'}`
+                  );
                 }}
                 className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
               >
-                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Create One'}
               </button>
             </div>
           </form>
         </div>
+
+        <LegalModal
+          isOpen={Boolean(legalModalTab)}
+          initialTab={legalModalTab || 'terms'}
+          onClose={() => setLegalModalTab(null)}
+          brandName={currentOrg.brand_name}
+          supportEmail={currentOrg.support_email}
+          primaryColor={primaryColor}
+        />
       </div>
     );
   }
@@ -342,14 +578,16 @@ export default function App() {
               </>
             )}
           </p>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
+          <Tooltip text="Sign out of this suspended account">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-xl"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </Tooltip>
         </div>
       </div>
     );
@@ -384,53 +622,61 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-2">
             {isAdmin && (
               <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setActiveView('ledger')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'ledger'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  My Books
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveView('admin')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activeView === 'admin'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
-                </button>
+                <Tooltip text="Open your personal business bookkeeping & Schedule C ledger" position="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('ledger')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      activeView === 'ledger'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    My Books
+                  </button>
+                </Tooltip>
+                <Tooltip text="Manage white-label branding, client logins, and tax office reports" position="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('admin')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      activeView === 'admin'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {userRole === 'super_admin' ? 'Platform & Office Admin' : 'Office Admin'}
+                  </button>
+                </Tooltip>
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setIsRecoveryMode(false);
-                setShowPasswordModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-              Change Password
-            </button>
+            <Tooltip text="Change your login password" position="bottom">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecoveryMode(false);
+                  setShowPasswordModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                Change Password
+              </button>
+            </Tooltip>
 
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
-            </button>
+            <Tooltip text="Sign out of your account" position="bottom">
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign Out
+              </button>
+            </Tooltip>
           </div>
         </div>
       </header>
@@ -445,14 +691,61 @@ export default function App() {
         ) : (
           <BookkeepingLedger
             targetUserId={session.user.id}
-            targetUserName={membership?.full_name || session.user.email}
-            readOnly={false}
+            targetUserName={
+              isDemoUser ? 'Interactive Demo Business' : membership?.full_name || session.user.email
+            }
+            readOnly={isDemoUser}
             primaryColor={primaryColor}
             supportEmail={currentOrg?.support_email}
             officeName={currentOrg?.brand_name}
           />
         )}
       </main>
+
+      <footer className="bg-white border-t border-slate-200 py-4 px-4 text-xs text-slate-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span>
+            © {new Date().getFullYear()} {currentOrg.brand_name}
+          </span>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('terms')}
+              className="hover:text-slate-900 underline"
+            >
+              Terms of Service
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('privacy')}
+              className="hover:text-slate-900 underline"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('disclaimer')}
+              className="hover:text-slate-900 underline"
+            >
+              Tax Disclaimer
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('security')}
+              className="hover:text-slate-900 underline"
+            >
+              Security Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModalTab('retention')}
+              className="hover:text-slate-900 underline"
+            >
+              Data Ownership
+            </button>
+          </div>
+        </div>
+      </footer>
 
       <ChangePasswordModal
         isOpen={showPasswordModal || mustChangePassword}
@@ -465,6 +758,15 @@ export default function App() {
         primaryColor={primaryColor}
         isRecoveryMode={isRecoveryMode}
         forceChange={mustChangePassword}
+      />
+
+      <LegalModal
+        isOpen={Boolean(legalModalTab)}
+        initialTab={legalModalTab || 'terms'}
+        onClose={() => setLegalModalTab(null)}
+        brandName={currentOrg.brand_name}
+        supportEmail={currentOrg.support_email}
+        primaryColor={primaryColor}
       />
     </div>
   );
