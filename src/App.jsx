@@ -699,7 +699,7 @@ export default function App() {
             type="button"
             onClick={async () => {
               await supabase.auth.signOut();
-              window.location.href = '/#signup';
+              window.location.href = '/#pricing';
             }}
             className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
           >
