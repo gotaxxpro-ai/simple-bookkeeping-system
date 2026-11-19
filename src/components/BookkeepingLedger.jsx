@@ -998,33 +998,35 @@ export default function BookkeepingLedger({
               className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-50"
             />
           </div>
+          {/* NAICS Code field */}
+        <div>
           <div className="flex items-center justify-between mb-1">
-  <label className="block text-xs font-semibold text-slate-700">
-    6-digit NAICS Code (Line B)
-  </label>
-  <a
-    href="https://www.naics.com/search/"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline"
-  >
-    Look up NAICS code &nearr;
-  </a>
-</div>
-            <input
-              type="text"
-              maxLength={6}
-              disabled={readOnly}
-              placeholder="e.g., 541611"
-              value={worksheet.naics_code}
-              onChange={(e) =>
-                setWorksheet({ ...worksheet, naics_code: e.target.value.replace(/[^0-9]/g, '') })
-              }
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm font-mono disabled:bg-slate-50"
-            />
+            <label className="block text-xs font-semibold text-slate-700">
+              6-digit NAICS Code (Line B)
+            </label>
+            <a
+              href="https://www.naics.com/search/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline"
+            >
+              Look up NAICS code &nearr;
+            </a>
           </div>
+          <input
+            type="text"
+            maxLength={6}
+            placeholder="e.g., 541611"
+            value={businessInfo.naicsCode || ''}
+            onChange={(e) =>
+              setBusinessInfo((prev) => ({ ...prev, naicsCode: e.target.value }))
+            }
+            disabled={readOnly}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+          />
         </div>
-      </form>
+      </div>
+    </div>
 
       {/* KPI Summary Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
