@@ -336,6 +336,35 @@ const handleLaunchDemo = async () => {
       </div>
     );
   }
+  if (authLoading || launchingDemo || (session && loadingMembership)) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
+      {launchingDemo ? 'Launching interactive demo...' : 'Loading workspace...'}
+    </div>
+  );
+}
+
+if (!session) {
+  if (!showAuth) {
+    return (
+      <LandingPage
+        tenant={currentOrg}
+        onOpenAuth={handleOpenAuth}
+        onLaunchDemo={handleLaunchDemo}
+        launchingDemo={launchingDemo}
+      />
+    );
+  }
+  <BookkeepingLedger
+  targetUserId={session.user.id}
+  targetUserName={
+    isDemoUser ? 'Interactive Demo Business' : membership?.full_name || session.user.email
+  }
+  readOnly={isDemoUser}
+  primaryColor={primaryColor}
+  supportEmail={currentOrg?.support_email}
+  officeName={currentOrg?.brand_name}
+/>
 
   if (!session) {
     if (!showAuth) {
