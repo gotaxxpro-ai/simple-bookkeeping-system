@@ -34,6 +34,7 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [launchingDemo, setLaunchingDemo] = useState(false);
 
   const [showAuth, setShowAuth] = useState(() => {
     const slug = new URLSearchParams(window.location.search).get('office');
@@ -64,6 +65,7 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState(null);
 
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
   const primaryColor = currentOrg?.primary_color || '#059669';
 
   useEffect(() => {
@@ -132,6 +134,40 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') !== 'true' || authLoading || session || launchingDemo) return;
+
+    let isMounted = true;
+    async function autoLoginDemo() {
+      setLaunchingDemo(true);
+      setAuthError(null);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: 'demo@simplebookkeepingsystem.com',
+          password: 'DemoPreview2026!',
+        });
+        if (error) throw error;
+        if (data?.session && isMounted) {
+          setSession(data.session);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAuthError(`Demo unavailable: ${err.message}`);
+          setShowAuth(true);
+        }
+      } finally {
+        if (isMounted) setLaunchingDemo(false);
+      }
+    }
+
+    autoLoginDemo();
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, session, launchingDemo]);
 
   useEffect(() => {
     if (mustChangePassword) {
@@ -274,13 +310,4 @@ export default function App() {
     }
 
     const redirectUrl =
-      currentOrg?.slug && currentOrg.slug !== 'default'
-        ? `${window.location.origin}/?office=${currentOrg.slug}`
-        : window.location.origin;
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: redirectUrl,
-    });
-
-    if (error) {
-      setAuthError(
+      current
