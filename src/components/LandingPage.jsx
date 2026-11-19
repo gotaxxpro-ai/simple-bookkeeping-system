@@ -19,7 +19,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
-export default function LandingPage({ tenant, onOpenAuth, onLaunchDemo, launchingDemo }) {
+export default function LandingPage({ tenant, onOpenAuth }) {
   const [audience, setAudience] = useState('tax_pros'); // 'tax_pros' | 'business_owners'
   const [b2cBilling, setB2cBilling] = useState('annual'); // 'monthly' ($15/mo) | 'annual' ($129/yr)
   const [openFaq, setOpenFaq] = useState(0);
