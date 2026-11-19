@@ -1026,7 +1026,7 @@ export default function BookkeepingLedger({
           />
         </div>
       </div>
-    </div>
+    </form>
 
       {/* KPI Summary Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
