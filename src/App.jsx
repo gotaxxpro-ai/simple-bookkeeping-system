@@ -21,6 +21,9 @@ import BookkeepingLedger from './components/BookkeepingLedger';
 import OfficeAdminTab from './components/OfficeAdminTab';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
+const DEMO_EMAIL = 'demo@simplebookkeepingsystem.com';
+const DEMO_PASSWORD = 'Demo1234!';
+
 const DEFAULT_ORG = {
   id: 'default',
   slug: 'default',
@@ -35,6 +38,9 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [launchingDemo, setLaunchingDemo] = useState(() => {
+    return new URLSearchParams(window.location.search).get('demo') === 'true';
+  });
 
   const initialUrlSlug = (new URLSearchParams(window.location.search).get('office') || '')
     .trim()
@@ -72,7 +78,9 @@ export default function App() {
   const [authError, setAuthError] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
 
-  const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+  const isDemoUser = session?.user?.email?.toLowerCase() === DEMO_EMAIL;
+  const mustChangePassword =
+    !isDemoUser && Boolean(session?.user?.user_metadata?.must_change_password);
   const primaryColor = currentOrg?.primary_color || '#059669';
   const hasUrlLockedOffice = Boolean(initialUrlSlug && initialUrlSlug !== 'default');
 
@@ -126,10 +134,59 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      setAuthLoading(false);
-    });
+    let isMounted = true;
+
+    async function initAuthAndDemo() {
+      const params = new URLSearchParams(window.location.search);
+      const wantsDemo = params.get('demo') === 'true';
+
+      const {
+        data: { session: initialSession },
+      } = await supabase.auth.getSession();
+
+      if (wantsDemo) {
+        if (initialSession?.user?.email?.toLowerCase() === DEMO_EMAIL) {
+          if (isMounted) {
+            setSession(initialSession);
+            setLaunchingDemo(false);
+            setAuthLoading(false);
+          }
+          return;
+        }
+
+        if (initialSession) {
+          await supabase.auth.signOut();
+        }
+
+        const { data: demoData, error: demoErr } = await supabase.auth.signInWithPassword({
+          email: DEMO_EMAIL,
+          password: DEMO_PASSWORD,
+        });
+
+        if (isMounted) {
+          if (!demoErr && demoData?.session) {
+            setSession(demoData.session);
+          } else {
+            setAuthError(
+              demoErr?.message ||
+                'Demo workspace is temporarily unavailable. Please sign in or create a free trial account.'
+            );
+            setShowAuth(true);
+          }
+          setLaunchingDemo(false);
+          setAuthLoading(false);
+        }
+        return;
+      }
+
+      if (isMounted) {
+        setSession(initialSession);
+        setLaunchingDemo(false);
+        setAuthLoading(false);
+      }
+    }
+
+    initAuthAndDemo();
 
     const {
       data: { subscription },
@@ -141,7 +198,10 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -172,7 +232,6 @@ export default function App() {
             setCurrentOrg(memberData.organizations);
             document.title = memberData.organizations.brand_name || 'Simple Bookkeeping System';
 
-            // Keep the browser URL synced with their Tax Office slug
             const orgSlug = memberData.organizations.slug;
             const currentUrlSlug = new URLSearchParams(window.location.search).get('office');
             if (orgSlug && orgSlug !== 'default' && currentUrlSlug !== orgSlug) {
@@ -209,8 +268,11 @@ export default function App() {
   };
 
   const handleBackToHome = () => {
-    if (typeof window !== 'undefined' && window.location.hash) {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.delete('demo');
+      const cleanQuery = params.toString() ? `?${params.toString()}` : '';
+      window.history.replaceState(null, '', `${window.location.pathname}${cleanQuery}`);
     }
     setAuthError(null);
     setAuthMessage(null);
@@ -245,7 +307,6 @@ export default function App() {
           throw new Error('Passwords do not match.');
         }
 
-        // Validate Tax Office slug if entered
         let matchedOrg = null;
         if (cleanSlug && cleanSlug !== 'default') {
           const { data: orgRow, error: orgErr } = await supabase
@@ -283,7 +344,6 @@ export default function App() {
         }
 
         if (data?.session) {
-          // Ensure user_memberships row is immediately linked to the matched Tax Office
           if (matchedOrg) {
             await supabase.from('user_memberships').upsert(
               {
@@ -360,10 +420,10 @@ export default function App() {
     handleBackToHome();
   };
 
-  if (authLoading || (session && loadingMembership)) {
+  if (authLoading || launchingDemo || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
-        Loading workspace...
+        {launchingDemo ? 'Launching live interactive demo workspace...' : 'Loading workspace...'}
       </div>
     );
   }
@@ -664,6 +724,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
+      {isDemoUser && (
+        <div className="bg-emerald-900 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-center gap-3">
+          <span>
+            <strong>Live Demo Mode:</strong> You are exploring a read-only sample 2026 Schedule C ledger.
+          </span>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.href = '/#signup';
+            }}
+            className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
+          >
+            Start Your 7-Day Free Trial &rarr;
+          </button>
+        </div>
+      )}
+
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -719,28 +797,30 @@ export default function App() {
               </div>
             )}
 
-            <Tooltip text="Change your login password" position="bottom">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRecoveryMode(false);
-                  setShowPasswordModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-              >
-                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                Change Password
-              </button>
-            </Tooltip>
+            {!isDemoUser && (
+              <Tooltip text="Change your login password" position="bottom">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRecoveryMode(false);
+                    setShowPasswordModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                  Change Password
+                </button>
+              </Tooltip>
+            )}
 
-            <Tooltip text="Sign out of your account" position="bottom">
+            <Tooltip text={isDemoUser ? 'Exit the live demo workspace' : 'Sign out of your account'} position="bottom">
               <button
                 type="button"
                 onClick={handleSignOut}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                Sign Out
+                {isDemoUser ? 'Exit Demo' : 'Sign Out'}
               </button>
             </Tooltip>
           </div>
@@ -758,6 +838,7 @@ export default function App() {
           <BookkeepingLedger
             targetUserId={session.user.id}
             targetUserName={membership?.full_name || session.user.email}
+            readOnly={isDemoUser}
             primaryColor={primaryColor}
             supportEmail={currentOrg?.support_email}
             officeName={currentOrg?.brand_name}
