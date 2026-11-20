@@ -21,10 +21,35 @@ import {
   X,
   Eye,
   EyeOff,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import BookkeepingLedger from './BookkeepingLedger';
 import Tooltip from './Tooltip';
+
+const RESERVED_SLUGS = new Set([
+  'default',
+  'admin',
+  'super-admin',
+  'super_admin',
+  'office-admin',
+  'office_admin',
+  'login',
+  'signup',
+  'demo',
+  'api',
+  'support',
+  'billing',
+]);
+
+function sanitizeSlug(raw) {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/--+/g, '-');
+}
 
 export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated }) {
   const isSuperAdmin = (membership?.role || '').toLowerCase() === 'super_admin';
@@ -61,6 +86,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const [loadingOrgs, setLoadingOrgs] = useState(false);
 
   const [brandForm, setBrandForm] = useState({
+    slug: '',
     brand_name: '',
     tagline: '',
     primary_color: '#059669',
@@ -68,6 +94,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     support_email: '',
   });
   const [savingBrand, setSavingBrand] = useState(false);
+  const [copiedPortalLink, setCopiedPortalLink] = useState(false);
 
   const [showNewOfficeForm, setShowNewOfficeForm] = useState(false);
   const [newOffice, setNewOffice] = useState({
@@ -82,7 +109,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const [creatingOffice, setCreatingOffice] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
 
-  // Helper: verifies a target member strictly belongs to this admin's organization
   const canManageMember = (member) => {
     if (!member) return false;
     if (isSuperAdmin) return true;
@@ -94,7 +120,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     async function loadAdminOrganization() {
       setLoadingOrgDetails(true);
       try {
-        // Non-super-admins always resolve strictly from their membership.organization_id
         const targetOrgId = isSuperAdmin
           ? currentOrg?.id && currentOrg.id !== 'default'
             ? currentOrg.id
@@ -110,6 +135,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           if (isMounted) {
             setResolvedOrg(currentOrg);
             setBrandForm({
+              slug: currentOrg.slug || '',
               brand_name: currentOrg.brand_name || '',
               tagline: currentOrg.tagline || '',
               primary_color: currentOrg.primary_color || '#059669',
@@ -129,6 +155,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         if (!error && data && isMounted) {
           setResolvedOrg(data);
           setBrandForm({
+            slug: data.slug || '',
             brand_name: data.brand_name || '',
             tagline: data.tagline || '',
             primary_color: data.primary_color || '#059669',
@@ -202,7 +229,6 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     setCreatingClient(true);
     setStatusMessage(null);
     try {
-      // Lock office_admin strictly to their own membership.organization_id
       const targetOrgId = isSuperAdmin
         ? newClient.organization_id ||
           resolvedOrg?.id ||
@@ -271,12 +297,45 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       return;
     }
 
+    const cleanSlug = sanitizeSlug(brandForm.slug);
+    if (cleanSlug.length < 3) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Portal URL Slug must be at least 3 characters (letters, numbers, and hyphens only).',
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (RESERVED_SLUGS.has(cleanSlug)) {
+      setStatusMessage({
+        type: 'error',
+        text: `The slug "${cleanSlug}" is reserved. Please choose a unique name for your tax office.`,
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     setSavingBrand(true);
     setStatusMessage(null);
     try {
+      // Check if another organization already owns this slug
+      const { data: existingSlugOrg } = await supabase
+        .from('organizations')
+        .select('id')
+        .ilike('slug', cleanSlug)
+        .neq('id', resolvedOrg.id)
+        .maybeSingle();
+
+      if (existingSlugOrg) {
+        throw new Error(
+          `The portal slug "${cleanSlug}" is already taken by another tax office. Please choose a different slug.`
+        );
+      }
+
       const { data, error } = await supabase
         .from('organizations')
         .update({
+          slug: cleanSlug,
           brand_name: brandForm.brand_name.trim(),
           tagline: brandForm.tagline.trim(),
           primary_color: brandForm.primary_color,
@@ -286,16 +345,47 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         .eq('id', resolvedOrg.id)
         .select()
         .single();
-      if (error) throw error;
+
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error(`The portal slug "${cleanSlug}" is already in use. Try adding your city or initials.`);
+        }
+        throw error;
+      }
 
       setResolvedOrg(data);
-      setStatusMessage({ type: 'success', text: 'White-label branding saved successfully.' });
+      setBrandForm((prev) => ({ ...prev, slug: data.slug }));
+      document.title = data.brand_name || 'Simple Bookkeeping System';
+
+      // Keep the browser URL bar updated to the new ?office=slug
+      if (typeof window !== 'undefined' && data.slug && data.slug !== 'default') {
+        window.history.replaceState(null, '', `${window.location.pathname}?office=${data.slug}`);
+      }
+
+      setStatusMessage({
+        type: 'success',
+        text: `White-label branding & custom portal link (?office=${data.slug}) saved!`,
+      });
       if (onOrgUpdated) onOrgUpdated(data);
       if (isSuperAdmin) fetchAllOrganizations();
     } catch (err) {
       setStatusMessage({ type: 'error', text: `Could not save branding: ${err.message}` });
     } finally {
       setSavingBrand(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleCopyPortalLink = async (slugToCopy) => {
+    const clean = sanitizeSlug(slugToCopy) || resolvedOrg?.slug;
+    if (!clean) return;
+    const url = `${window.location.origin}/?office=${clean}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedPortalLink(true);
+      setTimeout(() => setCopiedPortalLink(false), 2500);
+    } catch (_) {
+      setStatusMessage({ type: 'success', text: `Your Client Portal URL: ${url}` });
     }
   };
 
@@ -390,7 +480,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     try {
       const { data, error } = await supabase.functions.invoke('create-tax-office', {
         body: {
-          slug: newOffice.slug.trim().toLowerCase(),
+          slug: sanitizeSlug(newOffice.slug),
           brand_name: newOffice.brand_name.trim(),
           tagline: newOffice.tagline.trim(),
           primary_color: newOffice.primary_color,
@@ -515,6 +605,8 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     );
   }
 
+  const previewSlug = sanitizeSlug(brandForm.slug) || resolvedOrg?.slug || 'your-office';
+
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
       {statusMessage && (
@@ -534,35 +626,58 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         </div>
       )}
 
-      {/* SECTION 1: WHITE-LABEL BRANDING */}
+      {/* SECTION 1: WHITE-LABEL BRANDING & CUSTOM PORTAL SLUG */}
       {loadingOrgDetails ? (
         <div className="p-6 bg-white rounded-2xl border border-slate-200 text-sm text-slate-500">
           Loading tax office settings...
         </div>
       ) : resolvedOrg ? (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
               <Palette className="w-5 h-5 text-emerald-600" />
               <h2 className="text-lg font-semibold text-slate-800">
                 White-Label Branding ({resolvedOrg.slug})
               </h2>
             </div>
-            <Tooltip text="Open your branded client sign-in and registration URL in a new tab" position="bottom">
-              <a
-                href={`${window.location.origin}/?office=${resolvedOrg.slug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
-              >
-                Client Signup &amp; Portal Link <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </Tooltip>
+            <div className="flex items-center gap-2">
+              <Tooltip text="Copy your custom client registration & login URL to share with clients" position="bottom">
+                <button
+                  type="button"
+                  onClick={() => handleCopyPortalLink(resolvedOrg.slug)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700"
+                >
+                  {copiedPortalLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                      Copy Client Link
+                    </>
+                  )}
+                </button>
+              </Tooltip>
+
+              <Tooltip text="Open your branded client sign-in and registration URL in a new tab" position="bottom">
+                <a
+                  href={`${window.location.origin}/?office=${resolvedOrg.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 border border-emerald-200"
+                >
+                  Open Portal <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </Tooltip>
+            </div>
           </div>
+
           <form onSubmit={handleSaveBranding} className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Brand / Tax Office Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Brand / Tax Office Name *</label>
                 <input
                   type="text"
                   required
@@ -571,6 +686,36 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                   className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Custom Portal Slug * <span className="text-xs font-normal text-slate-400">(Client Link &amp; Signup Code)</span>
+                </label>
+                <div className="flex items-center">
+                  <span className="px-3 py-2 bg-slate-100 border border-r-0 border-slate-300 rounded-l-lg text-xs text-slate-500 font-mono">
+                    ?office=
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    minLength={3}
+                    maxLength={40}
+                    placeholder="your-tax-office"
+                    value={brandForm.slug}
+                    onChange={(e) =>
+                      setBrandForm({
+                        ...brandForm,
+                        slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+                      })
+                    }
+                    className="w-full px-3.5 py-2 border border-slate-300 rounded-r-lg text-sm font-mono"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500 font-mono truncate">
+                  {window.location.origin}/?office={previewSlug}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Support Email</label>
                 <input
@@ -581,25 +726,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                   className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Portal Tagline</label>
-                <input
-                  type="text"
-                  value={brandForm.tagline}
-                  onChange={(e) => setBrandForm({ ...brandForm, tagline: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Logo Image URL (Optional)</label>
-                <input
-                  type="url"
-                  value={brandForm.logo_url}
-                  onChange={(e) => setBrandForm({ ...brandForm, logo_url: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                />
-              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Brand Primary Color</label>
                 <div className="flex items-center gap-3">
@@ -617,9 +744,31 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                   />
                 </div>
               </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Portal Tagline</label>
+                <input
+                  type="text"
+                  value={brandForm.tagline}
+                  onChange={(e) => setBrandForm({ ...brandForm, tagline: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Logo Image URL (Optional)</label>
+                <input
+                  type="url"
+                  value={brandForm.logo_url}
+                  onChange={(e) => setBrandForm({ ...brandForm, logo_url: e.target.value })}
+                  placeholder="https://..."
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
             </div>
+
             <div className="pt-2 flex justify-end">
-              <Tooltip text="Save your tax office name, tagline, logo, and primary color">
+              <Tooltip text="Save your tax office slug, name, tagline, logo, and primary color">
                 <button
                   type="submit"
                   disabled={savingBrand}
