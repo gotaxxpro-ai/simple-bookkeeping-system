@@ -29,6 +29,7 @@ import Tooltip from './Tooltip';
 export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated }) {
   const isSuperAdmin = (membership?.role || '').toLowerCase() === 'super_admin';
   const isOfficeAdmin = (membership?.role || '').toLowerCase() === 'office_admin';
+  const adminOrgId = membership?.organization_id || null;
 
   const [inspectingClient, setInspectingClient] = useState(null);
   const [resolvedOrg, setResolvedOrg] = useState(null);
@@ -81,12 +82,31 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   const [creatingOffice, setCreatingOffice] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
 
+  // Helper: verifies a target member strictly belongs to this admin's organization
+  const canManageMember = (member) => {
+    if (!member) return false;
+    if (isSuperAdmin) return true;
+    return Boolean(adminOrgId && member.organization_id === adminOrgId);
+  };
+
   useEffect(() => {
     let isMounted = true;
     async function loadAdminOrganization() {
       setLoadingOrgDetails(true);
       try {
-        if (currentOrg && currentOrg.id && currentOrg.id !== 'default') {
+        // Non-super-admins always resolve strictly from their membership.organization_id
+        const targetOrgId = isSuperAdmin
+          ? currentOrg?.id && currentOrg.id !== 'default'
+            ? currentOrg.id
+            : adminOrgId
+          : adminOrgId;
+
+        if (!targetOrgId || targetOrgId === 'default') {
+          if (isMounted) setResolvedOrg(null);
+          return;
+        }
+
+        if (currentOrg && currentOrg.id === targetOrgId) {
           if (isMounted) {
             setResolvedOrg(currentOrg);
             setBrandForm({
@@ -99,23 +119,22 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
           }
           return;
         }
-        if (membership?.organization_id) {
-          const { data, error } = await supabase
-            .from('organizations')
-            .select('*')
-            .eq('id', membership.organization_id)
-            .maybeSingle();
 
-          if (!error && data && isMounted) {
-            setResolvedOrg(data);
-            setBrandForm({
-              brand_name: data.brand_name || '',
-              tagline: data.tagline || '',
-              primary_color: data.primary_color || '#059669',
-              logo_url: data.logo_url || '',
-              support_email: data.support_email || '',
-            });
-          }
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('*')
+          .eq('id', targetOrgId)
+          .maybeSingle();
+
+        if (!error && data && isMounted) {
+          setResolvedOrg(data);
+          setBrandForm({
+            brand_name: data.brand_name || '',
+            tagline: data.tagline || '',
+            primary_color: data.primary_color || '#059669',
+            logo_url: data.logo_url || '',
+            support_email: data.support_email || '',
+          });
         }
       } finally {
         if (isMounted) setLoadingOrgDetails(false);
@@ -125,12 +144,12 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     return () => {
       isMounted = false;
     };
-  }, [currentOrg, membership?.organization_id]);
+  }, [currentOrg, adminOrgId, isSuperAdmin]);
 
   useEffect(() => {
     if (isSuperAdmin || isOfficeAdmin) fetchMembers();
     if (isSuperAdmin) fetchAllOrganizations();
-  }, [isSuperAdmin, isOfficeAdmin, membership?.organization_id]);
+  }, [isSuperAdmin, isOfficeAdmin, adminOrgId]);
 
   const fetchMembers = async () => {
     if (!membership?.role) return;
@@ -142,13 +161,13 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
         .order('created_at', { ascending: false });
 
       if (!isSuperAdmin) {
-        if (!membership.organization_id) {
+        if (!adminOrgId || adminOrgId === 'default') {
           setMembers([]);
           setLoadingMembers(false);
           return;
         }
         query = query
-          .eq('organization_id', membership.organization_id)
+          .eq('organization_id', adminOrgId)
           .neq('role', 'super_admin');
       }
 
@@ -183,16 +202,17 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     setCreatingClient(true);
     setStatusMessage(null);
     try {
+      // Lock office_admin strictly to their own membership.organization_id
       const targetOrgId = isSuperAdmin
         ? newClient.organization_id ||
           resolvedOrg?.id ||
-          membership?.organization_id ||
+          adminOrgId ||
           organizations[0]?.id ||
           ''
-        : resolvedOrg?.id || membership?.organization_id || '';
+        : adminOrgId || '';
 
-      if (!targetOrgId) {
-        throw new Error('No tax office organization selected or linked to your account.');
+      if (!targetOrgId || targetOrgId === 'default') {
+        throw new Error('No tax office organization linked to your account. Save or link your office first.');
       }
 
       const cleanPassword = newClient.password.trim();
@@ -246,6 +266,11 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       setStatusMessage({ type: 'error', text: 'No database organization linked to this account.' });
       return;
     }
+    if (!isSuperAdmin && resolvedOrg.id !== adminOrgId) {
+      setStatusMessage({ type: 'error', text: 'You can only update branding for your own tax office.' });
+      return;
+    }
+
     setSavingBrand(true);
     setStatusMessage(null);
     try {
@@ -275,6 +300,10 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   };
 
   const handleToggleMemberStatus = async (member) => {
+    if (!canManageMember(member)) {
+      setStatusMessage({ type: 'error', text: 'Access denied: user belongs to another organization.' });
+      return;
+    }
     if (member.user_id === membership?.user_id) {
       setStatusMessage({ type: 'error', text: 'You cannot suspend your own administrator account.' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -305,7 +334,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
 
   const handleAdminResetPassword = async (e) => {
     e.preventDefault();
-    if (!resetTargetMember) return;
+    if (!resetTargetMember || !canManageMember(resetTargetMember)) return;
 
     const cleanPassword = tempResetPassword.trim();
     if (cleanPassword.length < 6) {
@@ -355,6 +384,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
 
   const handleCreateTaxOffice = async (e) => {
     e.preventDefault();
+    if (!isSuperAdmin) return;
     setCreatingOffice(true);
     setStatusMessage(null);
     try {
@@ -408,6 +438,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
   };
 
   const handleToggleOrgStatus = async (org) => {
+    if (!isSuperAdmin) return;
     try {
       const { error } = await supabase
         .from('organizations')
@@ -446,6 +477,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
 
     return true;
   });
+
   if (!isSuperAdmin && !isOfficeAdmin) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-red-700">
@@ -454,7 +486,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
     );
   }
 
-  if (inspectingClient) {
+  if (inspectingClient && canManageMember(inspectingClient)) {
     const clientLabel = inspectingClient.full_name || inspectingClient.email || 'Client';
     return (
       <div className="space-y-6 max-w-6xl mx-auto">
@@ -760,7 +792,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                     value={
                       newClient.organization_id ||
                       resolvedOrg?.id ||
-                      membership?.organization_id ||
+                      adminOrgId ||
                       organizations[0]?.id ||
                       ''
                     }
@@ -885,7 +917,9 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                           <Tooltip text="Inspect this client's bookkeeping and Schedule C worksheets (read-only)">
                             <button
                               type="button"
-                              onClick={() => setInspectingClient(member)}
+                              onClick={() => {
+                                if (canManageMember(member)) setInspectingClient(member);
+                              }}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200"
                             >
                               <BookOpen className="w-3.5 h-3.5" />
@@ -900,6 +934,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (!canManageMember(member)) return;
                                     setResetTargetMember(member);
                                     setTempResetPassword('');
                                     setShowResetPasswordText(false);
@@ -1154,7 +1189,7 @@ export default function OfficeAdminTab({ membership, currentOrg, onOrgUpdated })
       )}
 
       {/* RESET CLIENT TEMPORARY PASSWORD MODAL */}
-      {resetTargetMember && (
+      {resetTargetMember && canManageMember(resetTargetMember) && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
