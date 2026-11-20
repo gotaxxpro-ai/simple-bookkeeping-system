@@ -14,6 +14,7 @@ import {
   User,
   Eye,
   EyeOff,
+  Hash,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
@@ -34,12 +35,16 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [launchingDemo, setLaunchingDemo] = useState(false);
+
+  const initialUrlSlug = (new URLSearchParams(window.location.search).get('office') || '')
+    .trim()
+    .toLowerCase();
 
   const [showAuth, setShowAuth] = useState(() => {
-    const slug = new URLSearchParams(window.location.search).get('office');
     const hash = window.location.hash.replace('#', '').toLowerCase();
-    return Boolean((slug && slug !== 'default') || hash === 'login' || hash === 'signup');
+    return Boolean(
+      (initialUrlSlug && initialUrlSlug !== 'default') || hash === 'login' || hash === 'signup'
+    );
   });
 
   const [currentOrg, setCurrentOrg] = useState(DEFAULT_ORG);
@@ -55,6 +60,9 @@ export default function App() {
     return window.location.hash.replace('#', '').toLowerCase() === 'signup';
   });
   const [fullName, setFullName] = useState('');
+  const [officeSlugInput, setOfficeSlugInput] = useState(
+    initialUrlSlug && initialUrlSlug !== 'default' ? initialUrlSlug : ''
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -65,8 +73,8 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState(null);
 
   const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
-  const isDemoUser = session?.user?.email?.toLowerCase() === 'demo@simplebookkeepingsystem.com';
   const primaryColor = currentOrg?.primary_color || '#059669';
+  const hasUrlLockedOffice = Boolean(initialUrlSlug && initialUrlSlug !== 'default');
 
   useEffect(() => {
     const syncAuthFromHash = () => {
@@ -107,6 +115,7 @@ export default function App() {
 
       if (!error && data && isMounted) {
         setCurrentOrg(data);
+        setOfficeSlugInput(data.slug);
         document.title = data.brand_name || 'Simple Bookkeeping System';
       }
     }
@@ -136,40 +145,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('demo') !== 'true' || authLoading || session || launchingDemo) return;
-
-    let isMounted = true;
-    async function autoLoginDemo() {
-      setLaunchingDemo(true);
-      setAuthError(null);
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: 'demo@simplebookkeepingsystem.com',
-          password: 'DemoPreview2026!',
-        });
-        if (error) throw error;
-        if (data?.session && isMounted) {
-          setSession(data.session);
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setAuthError(`Demo unavailable: ${err.message}`);
-          setShowAuth(true);
-        }
-      } finally {
-        if (isMounted) setLaunchingDemo(false);
-      }
-    }
-
-    autoLoginDemo();
-    return () => {
-      isMounted = false;
-    };
-  }, [authLoading, session, launchingDemo]);
-
-  useEffect(() => {
     if (mustChangePassword) {
       setShowPasswordModal(true);
     }
@@ -196,6 +171,13 @@ export default function App() {
           if (memberData.organizations) {
             setCurrentOrg(memberData.organizations);
             document.title = memberData.organizations.brand_name || 'Simple Bookkeeping System';
+
+            // Keep the browser URL synced with their Tax Office slug
+            const orgSlug = memberData.organizations.slug;
+            const currentUrlSlug = new URLSearchParams(window.location.search).get('office');
+            if (orgSlug && orgSlug !== 'default' && currentUrlSlug !== orgSlug) {
+              window.history.replaceState(null, '', `${window.location.pathname}?office=${orgSlug}`);
+            }
           }
         }
       } finally {
@@ -244,6 +226,7 @@ export default function App() {
     try {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = password.trim();
+      const cleanSlug = officeSlugInput.trim().toLowerCase();
 
       if (!cleanEmail || !cleanPassword) {
         throw new Error('Please enter both your email address and password.');
@@ -262,13 +245,31 @@ export default function App() {
           throw new Error('Passwords do not match.');
         }
 
+        // Validate Tax Office slug if entered
+        let matchedOrg = null;
+        if (cleanSlug && cleanSlug !== 'default') {
+          const { data: orgRow, error: orgErr } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('slug', cleanSlug)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (orgErr || !orgRow) {
+            throw new Error(
+              `Tax Office code "${cleanSlug}" was not found. Check the code with your tax preparer or leave it blank for a direct business account.`
+            );
+          }
+          matchedOrg = orgRow;
+        }
+
         const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password: cleanPassword,
           options: {
             data: {
               full_name: fullName.trim(),
-              office_slug: currentOrg?.slug !== 'default' ? currentOrg?.slug : undefined,
+              office_slug: matchedOrg ? matchedOrg.slug : undefined,
               terms_accepted_at: new Date().toISOString(),
               terms_version: '1.0',
             },
@@ -276,9 +277,36 @@ export default function App() {
         });
         if (error) throw error;
 
+        if (matchedOrg) {
+          setCurrentOrg(matchedOrg);
+          document.title = matchedOrg.brand_name || 'Simple Bookkeeping System';
+        }
+
         if (data?.session) {
+          // Ensure user_memberships row is immediately linked to the matched Tax Office
+          if (matchedOrg) {
+            await supabase.from('user_memberships').upsert(
+              {
+                user_id: data.session.user.id,
+                organization_id: matchedOrg.id,
+                full_name: fullName.trim() || null,
+                role: 'client',
+                is_active: true,
+              },
+              { onConflict: 'user_id' }
+            );
+            window.location.href = `${window.location.pathname}?office=${matchedOrg.slug}`;
+            return;
+          }
           setSession(data.session);
         } else {
+          if (matchedOrg) {
+            window.history.replaceState(
+              null,
+              '',
+              `${window.location.pathname}?office=${matchedOrg.slug}#login`
+            );
+          }
           setAuthMessage('Account created! You can now sign in with your password.');
           setConfirmPassword('');
           setIsSignUp(false);
@@ -332,10 +360,10 @@ export default function App() {
     handleBackToHome();
   };
 
-  if (authLoading || launchingDemo || (session && loadingMembership)) {
+  if (authLoading || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
-        {launchingDemo ? 'Launching interactive demo...' : 'Loading workspace...'}
+        Loading workspace...
       </div>
     );
   }
@@ -390,20 +418,51 @@ export default function App() {
             )}
 
             {isSignUp && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Jane Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Jane Doe"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Tax Office Code / Slug{' '}
+                      <span className="font-normal text-slate-400">(Optional)</span>
+                    </label>
+                    {hasUrlLockedOffice && (
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        Linked to Office
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="e.g. smith-tax (leave blank if none)"
+                      value={officeSlugInput}
+                      readOnly={hasUrlLockedOffice}
+                      onChange={(e) =>
+                        setOfficeSlugInput(e.target.value.toLowerCase().replace(/\s+/g, '-'))
+                      }
+                      className={`w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm ${
+                        hasUrlLockedOffice ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+              </>
             )}
 
             <div>
@@ -660,21 +719,19 @@ export default function App() {
               </div>
             )}
 
-            {!isDemoUser && (
-              <Tooltip text="Change your login password" position="bottom">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRecoveryMode(false);
-                    setShowPasswordModal(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
-                >
-                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                  Change Password
-                </button>
-              </Tooltip>
-            )}
+            <Tooltip text="Change your login password" position="bottom">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRecoveryMode(false);
+                  setShowPasswordModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                Change Password
+              </button>
+            </Tooltip>
 
             <Tooltip text="Sign out of your account" position="bottom">
               <button
@@ -683,30 +740,12 @@ export default function App() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                {isDemoUser ? 'Exit Demo' : 'Sign Out'}
+                Sign Out
               </button>
             </Tooltip>
           </div>
         </div>
       </header>
-
-      {isDemoUser && (
-        <div className="bg-emerald-900 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-center gap-3">
-          <span>
-            <strong>Live Demo Mode:</strong> You are exploring a read-only sample 2026 Schedule C ledger.
-          </span>
-          <button
-            type="button"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.href = '/#pricing';
-            }}
-            className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
-          >
-            Start Your 7-Day Free Trial &rarr;
-          </button>
-        </div>
-      )}
 
       <main className="flex-1 px-4 py-6">
         {isAdmin && activeView === 'admin' ? (
@@ -718,10 +757,7 @@ export default function App() {
         ) : (
           <BookkeepingLedger
             targetUserId={session.user.id}
-            targetUserName={
-              isDemoUser ? 'Interactive Demo Business' : membership?.full_name || session.user.email
-            }
-            readOnly={isDemoUser}
+            targetUserName={membership?.full_name || session.user.email}
             primaryColor={primaryColor}
             supportEmail={currentOrg?.support_email}
             officeName={currentOrg?.brand_name}
