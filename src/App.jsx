@@ -15,6 +15,7 @@ import {
   Eye,
   EyeOff,
   Hash,
+  CheckCircle2,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
@@ -38,13 +39,22 @@ const DEFAULT_ORG = {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialUrlSlug = (initialParams.get('office') || '').trim().toLowerCase();
+  const checkoutSessionId = (initialParams.get('checkout_session_id') || '').trim();
+
   const [launchingDemo, setLaunchingDemo] = useState(() => {
-    return new URLSearchParams(window.location.search).get('demo') === 'true';
+    return initialParams.get('demo') === 'true';
   });
 
-  const initialUrlSlug = (new URLSearchParams(window.location.search).get('office') || '')
-    .trim()
-    .toLowerCase();
+  // Post-Stripe Checkout password-only onboarding state
+  const [checkoutInfo, setCheckoutInfo] = useState(null);
+  const [loadingCheckoutInfo, setLoadingCheckoutInfo] = useState(Boolean(checkoutSessionId));
+  const [checkoutPassword, setCheckoutPassword] = useState('');
+  const [checkoutConfirmPassword, setCheckoutConfirmPassword] = useState('');
+  const [showCheckoutPasswordText, setShowCheckoutPasswordText] = useState(false);
+  const [completingCheckout, setCompletingCheckout] = useState(false);
 
   const [showAuth, setShowAuth] = useState(() => {
     const hash = window.location.hash.replace('#', '').toLowerCase();
@@ -83,6 +93,40 @@ export default function App() {
     !isDemoUser && Boolean(session?.user?.user_metadata?.must_change_password);
   const primaryColor = currentOrg?.primary_color || '#059669';
   const hasUrlLockedOffice = Boolean(initialUrlSlug && initialUrlSlug !== 'default');
+
+  // Load pre-filled Name & Email from Stripe when redirected with ?checkout_session_id=cs_...
+  useEffect(() => {
+    if (!checkoutSessionId) return;
+    let isMounted = true;
+
+    async function loadCheckoutPreview() {
+      try {
+        const { data, error } = await supabase.functions.invoke('complete-stripe-onboarding', {
+          body: { session_id: checkoutSessionId },
+        });
+        if (!error && data?.email && isMounted) {
+          setCheckoutInfo(data);
+        } else if (isMounted) {
+          setAuthError(
+            data?.error ||
+              error?.message ||
+              'Could not verify your Stripe checkout session. Please contact support or sign in below.'
+          );
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAuthError(err.message || 'Could not verify your Stripe checkout session.');
+        }
+      } finally {
+        if (isMounted) setLoadingCheckoutInfo(false);
+      }
+    }
+
+    loadCheckoutPreview();
+    return () => {
+      isMounted = false;
+    };
+  }, [checkoutSessionId]);
 
   useEffect(() => {
     const syncAuthFromHash = () => {
@@ -271,12 +315,63 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       params.delete('demo');
+      params.delete('checkout_session_id');
       const cleanQuery = params.toString() ? `?${params.toString()}` : '';
       window.history.replaceState(null, '', `${window.location.pathname}${cleanQuery}`);
     }
     setAuthError(null);
     setAuthMessage(null);
     setShowAuth(false);
+  };
+
+  // Post-Stripe Checkout: User enters ONLY a password -> provisions account -> auto-logs in
+  const handleCompleteCheckoutOnboarding = async (e) => {
+    e.preventDefault();
+    setAuthError(null);
+
+    const cleanPass = checkoutPassword.trim();
+    if (cleanPass.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (cleanPass !== checkoutConfirmPassword.trim()) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+
+    setCompletingCheckout(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('complete-stripe-onboarding', {
+        body: {
+          session_id: checkoutSessionId,
+          password: cleanPass,
+        },
+      });
+
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || 'Could not activate your account.');
+      }
+
+      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: cleanPass,
+      });
+      if (signInErr) throw signInErr;
+
+      // Remove ?checkout_session_id from URL and route B2B buyers directly to their new ?office=slug
+      const nextUrl = data.org_slug
+        ? `${window.location.pathname}?office=${data.org_slug}`
+        : window.location.pathname;
+      window.history.replaceState(null, '', nextUrl);
+
+      if (signInData?.session) {
+        setSession(signInData.session);
+      }
+    } catch (err) {
+      setAuthError(err.message || 'Account activation failed.');
+    } finally {
+      setCompletingCheckout(false);
+    }
   };
 
   const handleAuthSubmit = async (e) => {
@@ -424,6 +519,124 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
         {launchingDemo ? 'Launching live interactive demo workspace...' : 'Loading workspace...'}
+      </div>
+    );
+  }
+
+  // POST-STRIPE CHECKOUT: Password-only activation & immediate auto-login
+  if (!session && checkoutSessionId) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-6 bg-emerald-600 text-white text-center space-y-1.5">
+            <CheckCircle2 className="w-9 h-9 mx-auto mb-1 text-emerald-100" />
+            <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
+              Payment Confirmed
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">Choose Your Password</h1>
+            <p className="text-xs text-emerald-50">
+              {checkoutInfo?.plan_name || 'Simple Bookkeeping System'}
+            </p>
+          </div>
+
+          {loadingCheckoutInfo ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              Verifying your Stripe checkout...
+            </div>
+          ) : (
+            <form onSubmit={handleCompleteCheckoutOnboarding} className="p-6 space-y-4">
+              {authError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
+                  {authError}
+                </div>
+              )}
+
+              {checkoutInfo && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                  {checkoutInfo.full_name && (
+                    <div className="font-semibold text-slate-900">{checkoutInfo.full_name}</div>
+                  )}
+                  <div className="font-mono text-slate-600">{checkoutInfo.email}</div>
+                  <div className="text-[11px] text-emerald-700 font-medium pt-0.5">
+                    Account Type:{' '}
+                    {checkoutInfo.role === 'office_admin'
+                      ? 'Tax Office / Service Bureau Admin'
+                      : 'Business Owner Ledger'}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Create Password *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showCheckoutPasswordText ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Minimum 6 characters"
+                    value={checkoutPassword}
+                    onChange={(e) => setCheckoutPassword(e.target.value)}
+                    className="w-full pl-9 pr-10 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCheckoutPasswordText(!showCheckoutPasswordText)}
+                    aria-label={showCheckoutPasswordText ? 'Hide password' : 'Show password'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1"
+                  >
+                    {showCheckoutPasswordText ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Confirm Password *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showCheckoutPasswordText ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Re-enter your password"
+                    value={checkoutConfirmPassword}
+                    onChange={(e) => setCheckoutConfirmPassword(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={completingCheckout || !checkoutInfo}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
+              >
+                {completingCheckout ? 'Activating & Signing In...' : 'Activate & Open My Portal'}
+              </button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.history.replaceState(null, '', `${window.location.pathname}#login`);
+                    window.location.reload();
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 underline"
+                >
+                  Already have a password? Sign In
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     );
   }
@@ -733,7 +946,7 @@ export default function App() {
             type="button"
             onClick={async () => {
               await supabase.auth.signOut();
-              window.location.href = '/#pricing';
+              window.location.href = '/#signup';
             }}
             className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
           >
