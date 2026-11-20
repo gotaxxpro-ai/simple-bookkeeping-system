@@ -341,17 +341,24 @@ export default function App() {
 
     setCompletingCheckout(true);
     try {
-      const { data, error } = await supabase.functions.invoke('complete-stripe-onboarding', {
+     const { data, error } = await supabase.functions.invoke('complete-stripe-onboarding', {
         body: {
           session_id: checkoutSessionId,
           password: cleanPass,
         },
       });
 
-      if (error || data?.error) {
-        throw new Error(data?.error || error?.message || 'Could not activate your account.');
+      if (error) {
+        let detailedMsg = error.message;
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const errBody = await error.context.json();
+            if (errBody?.error) detailedMsg = errBody.error;
+          }
+        } catch (_) {}
+        throw new Error(detailedMsg);
       }
-
+      if (data?.error) throw new Error(data.error);
       const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: cleanPass,
