@@ -36,6 +36,268 @@ const DEFAULT_ORG = {
   is_active: true,
 };
 
+function exportScheduleCToPdf({
+  taxYear,
+  businessProfile = {},
+  branding = {},
+  grossIncome = 0,
+  expenseLines = [],
+  totalExpenses = 0,
+  netProfit = 0,
+  totalBusinessMiles = 0,
+  mileageDeduction = 0,
+}) {
+  const fmt = (val) =>
+    Number(val || 0).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    });
+
+  const escapeHtml = (str) =>
+    String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const brandName = escapeHtml(branding?.brand_name || 'Simple Bookkeeping System');
+  const supportEmail = escapeHtml(branding?.support_email || '');
+  const primaryColor = branding?.primary_color || '#059669';
+
+  const bizName = escapeHtml(
+    businessProfile?.business_name || businessProfile?.name || 'Schedule C Business'
+  );
+  const ein = escapeHtml(businessProfile?.ein || 'SSN / On File');
+  const naics = escapeHtml(businessProfile?.naics_code || businessProfile?.naics || '—');
+  const ownerName = escapeHtml(businessProfile?.owner_name || '');
+
+  const rowsHtml =
+    expenseLines.length > 0
+      ? expenseLines
+          .map(
+            (item) => `
+          <tr>
+            <td>${escapeHtml(item.line || '')}</td>
+            <td>${escapeHtml(item.category || item.label || 'Expense')}</td>
+            <td class="num">${fmt(item.amount)}</td>
+          </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="3" style="text-align:center;color:#64748b;">No categorized expenses recorded for ${escapeHtml(taxYear)}.</td></tr>`;
+
+  const printWindow = window.open('', '_blank', 'width=900,height=1050');
+  if (!printWindow) {
+    alert('Please allow pop-ups in your browser to generate your Schedule C PDF.');
+    return;
+  }
+
+  const generatedDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${taxYear} Schedule C Tax Summary - ${bizName}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0f172a;
+      margin: 0;
+      padding: 36px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid ${primaryColor};
+      padding-bottom: 16px;
+      margin-bottom: 22px;
+    }
+    .brand { font-size: 18px; font-weight: 700; color: ${primaryColor}; }
+    .sub { font-size: 12px; color: #475569; margin-top: 2px; }
+    .badge {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px 24px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 22px;
+    }
+    .meta-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; }
+    .meta-val { font-size: 13px; font-weight: 600; color: #0f172a; }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .kpi {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; }
+    .kpi-num { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #334155;
+      margin: 0 0 10px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 22px;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 9px 10px;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #475569;
+    }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.total-row td {
+      font-weight: 700;
+      background: #f8fafc;
+      border-top: 2px solid #94a3b8;
+      border-bottom: 2px solid #94a3b8;
+    }
+    .footer {
+      margin-top: 28px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 11px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+    @media print {
+      body { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">${brandName}</div>
+      <div class="sub">IRS Schedule C (Form 1040) Profit or Loss From Business — Tax Preparer Summary</div>
+      ${supportEmail ? `<div class="sub">Prepared via ${supportEmail}</div>` : ''}
+    </div>
+    <div class="badge">Tax Year ${escapeHtml(taxYear)}</div>
+  </div>
+
+  <div class="meta-grid">
+    <div>
+      <div class="meta-label">Business Name</div>
+      <div class="meta-val">${bizName}</div>
+    </div>
+    <div>
+      <div class="meta-label">Employer ID Number (EIN)</div>
+      <div class="meta-val">${ein}</div>
+    </div>
+    <div>
+      <div class="meta-label">Principal Business Code (NAICS)</div>
+      <div class="meta-val">${naics}</div>
+    </div>
+    <div>
+      <div class="meta-label">Proprietor / Report Date</div>
+      <div class="meta-val">${ownerName ? `${ownerName} • ` : ''}${generatedDate}</div>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-title">Part I — Gross Receipts / Income</div>
+      <div class="kpi-num" style="color:#059669;">${fmt(grossIncome)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-title">Part II — Total Expenses</div>
+      <div class="kpi-num" style="color:#dc2626;">${fmt(totalExpenses)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-title">Line 31 — Net Profit / (Loss)</div>
+      <div class="kpi-num" style="color:${Number(netProfit) >= 0 ? '#0f172a' : '#dc2626'};">${fmt(netProfit)}</div>
+    </div>
+  </div>
+
+  <h2>Part II — Schedule C Expense Breakdown</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:18%;">IRS Line</th>
+        <th>Expense Category</th>
+        <th class="num" style="width:24%;">Annual Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+      <tr class="total-row">
+        <td colspan="2">Total Schedule C Expenses (Line 28)</td>
+        <td class="num">${fmt(totalExpenses)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Part IV — Vehicle &amp; Business Mileage Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th class="num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Total Business Miles Logged (${escapeHtml(taxYear)})</td>
+        <td class="num">${Number(totalBusinessMiles || 0).toLocaleString('en-US')} miles</td>
+      </tr>
+      <tr>
+        <td>Estimated Standard Mileage Deduction</td>
+        <td class="num">${fmt(mileageDeduction)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <span>Generated by ${brandName}</span>
+    <span>Keep supporting receipts and mileage logs for at least 3 years.</span>
+  </div>
+
+  <script>
+    window.onload = function () {
+      window.focus();
+      window.print();
+    };
+  </script>
+</body>
+</html>`);
+
+  printWindow.document.close();
+}
+
 function DashboardQuickStartCard({
   role = 'client',
   brandColor = '#059669',
@@ -1147,6 +1409,27 @@ export default function App() {
   const userRole = (membership?.role || 'client').toLowerCase();
   const isAdmin = userRole === 'super_admin' || userRole === 'office_admin';
 
+  <button
+  type="button"
+  onClick={() =>
+    exportScheduleCToPdf({
+      taxYear: selectedYear,
+      businessProfile,
+      branding,
+      grossIncome: totalIncome,
+      expenseLines: scheduleCCategoryRows, // array of { line, category, amount }
+      totalExpenses,
+      netProfit,
+      totalBusinessMiles,
+      mileageDeduction,
+    })
+  }
+  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95 transition"
+  style={{ backgroundColor: branding?.primary_color || '#059669' }}
+>
+  Create Schedule C PDF
+</button>
+  
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {isDemoUser && (
