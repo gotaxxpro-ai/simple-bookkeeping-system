@@ -16,6 +16,7 @@ import {
   EyeOff,
   Hash,
   CheckCircle2,
+  Wrench,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
@@ -39,6 +40,35 @@ const DEFAULT_ORG = {
   support_email: '',
   is_active: true,
 };
+
+function MissingSupabaseConfigScreen() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="max-w-lg w-full bg-white p-8 rounded-2xl border border-amber-200 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 text-amber-700">
+          <Wrench className="w-7 h-7 shrink-0" />
+          <h1 className="text-lg font-bold text-slate-900">
+            Environment Configuration Required
+          </h1>
+        </div>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          The Supabase client was not initialized in this build because{' '}
+          <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">VITE_SUPABASE_URL</code> or{' '}
+          <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">VITE_SUPABASE_ANON_KEY</code>{' '}
+          was missing when <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">npm run build</code> executed.
+        </p>
+        <div className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono space-y-1 overflow-x-auto">
+          <div>VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co</div>
+          <div>VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY</div>
+          <div>VITE_STANDALONE_MODE={IS_STANDALONE_MODE ? 'true' : 'false'}</div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Add these variables to your root <code className="bg-slate-100 px-1 rounded">.env</code> file (or Hostinger Environment Variables), run <code className="bg-slate-100 px-1 rounded">npm run build</code> again, and upload the updated <code className="bg-slate-100 px-1 rounded">dist/</code> contents.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function HiddenFunnelOfferPage({
   standaloneMode = false,
@@ -600,6 +630,10 @@ function DashboardQuickStartCard({
 }
 
 export default function App() {
+  if (!supabase) {
+    return <MissingSupabaseConfigScreen />;
+  }
+
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -1443,6 +1477,14 @@ export default function App() {
                       className="font-semibold text-emerald-700 underline"
                     >
                       Privacy Policy
+                    </button>
+                    ,{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModalTab('cookies')}
+                      className="font-semibold text-emerald-700 underline"
+                    >
+                      Cookie Policy
                     </button>
                     , and{' '}
                     <button
