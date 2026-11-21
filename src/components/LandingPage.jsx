@@ -74,7 +74,11 @@ export default function LandingPage({
           a: 'No. You register with any email address and password. All income, expenses, mileage, COGS, and home office records are stored securely in your private cloud ledger—no spreadsheets required.',
         },
         {
-          q: 'How do I activate my account if I purchased through Etsy or an online marketplace?',
+          q: 'How does the $54.30 Lifetime Solo License work?',
+          a: 'You pay $54.30 once (less than $4.53/month in Year 1 and $0/month forever after) for lifetime access across unlimited tax years. You can purchase directly on this page or activate an Etsy / marketplace welcome pass.',
+        },
+        {
+          q: 'How do I activate my account if I purchased through Etsy?',
           a: 'Click "Create Account" (or "Get Started") at the top of this page, enter your name, email, and chosen password, and your private Schedule C workspace opens immediately.',
         },
         {
@@ -259,12 +263,12 @@ export default function LandingPage({
                   <>
                     <button
                       type="button"
-                      onClick={() => triggerAuth('signup')}
-                      title="Create your solo Schedule C bookkeeping account"
+                      onClick={() => setCheckoutPlan('b2c_lifetime')}
+                      title="Unlock Lifetime Solo Schedule C Access for $54.30 one-time"
                       style={{ backgroundColor: accentColor }}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
                     >
-                      Create Your Free Account
+                      Get Lifetime Access ($54.30)
                       <ArrowRight className="w-5 h-5" />
                     </button>
                     <a
@@ -477,11 +481,11 @@ export default function LandingPage({
                 1
               </div>
               <h3 className="font-bold text-base text-slate-900 mb-1">
-                {standaloneMode ? 'Create Your Account' : 'Choose Your Plan & Sign In'}
+                {standaloneMode ? 'Activate Your Lifetime Workspace' : 'Choose Your Plan & Sign In'}
               </h3>
               <p className="text-sm text-slate-600">
                 {standaloneMode
-                  ? 'Register with your email and password (or redeem your Etsy / marketplace welcome pass) in under a minute.'
+                  ? 'Unlock lifetime access for $54.30 (or redeem your Etsy welcome pass) and set your login email & password in under a minute.'
                   : 'Select an individual business account or launch your white-label tax office portal in under a minute—no Google account required.'}
               </p>
             </div>
@@ -519,7 +523,7 @@ export default function LandingPage({
         </div>
       </section>
 
-      {/* Pricing Section: Adapts Automatically for Standalone Mode vs Multi-Tenant Platform */}
+      {/* Pricing Section: Standalone Solo ($15/mo or $54.30 One-Time) vs Multi-Tenant Platform */}
       {!isCustomTenant && (
         <section id="pricing" className="py-16 sm:py-20 px-4 max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-12">
@@ -533,7 +537,7 @@ export default function LandingPage({
             </h2>
             <p className="mt-3 text-slate-600">
               {standaloneMode
-                ? 'Start with a 7-day free trial or activate using your Etsy / marketplace welcome voucher.'
+                ? 'Pay once for lifetime access ($54.30) or start with a 7-day free monthly trial.'
                 : 'Whether you are tracking your own Schedule C business or white-labeling the portal for your tax clients, pick the model that fits you best.'}
             </p>
           </div>
@@ -579,43 +583,34 @@ export default function LandingPage({
                   </ul>
                 </div>
 
-                <div className="space-y-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setCheckoutPlan('b2c_monthly')}
-                    title="Start 7-day free trial ($15/month after)"
-                    className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
-                  >
-                    Start 7-Day Free Trial ($15/mo after)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => triggerAuth('signup')}
-                    className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-900 underline"
-                  >
-                    Have an Etsy / Marketplace Pass? Create Account →
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setCheckoutPlan('b2c_monthly')}
+                  title="Start 7-day free trial ($15/month after)"
+                  className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
+                >
+                  Start 7-Day Free Trial ($15/mo after)
+                </button>
               </div>
 
-              {/* Standalone Card 2: Annual Best Value */}
+              {/* Standalone Card 2: One-Time Lifetime Fee ($54.30) */}
               <div className="bg-slate-900 text-white rounded-2xl border-2 border-emerald-500 p-7 shadow-xl flex flex-col justify-between relative">
                 <span className="absolute -top-3.5 right-6 bg-emerald-500 text-slate-950 text-[11px] font-extrabold uppercase px-3 py-0.5 rounded-full">
-                  Best Value • Save $51/Yr
+                  Best Value • Pay Once
                 </span>
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                    Annual Plan
+                    Lifetime Solo License
                   </span>
-                  <h3 className="font-bold text-xl mt-2">Solo Business Annual</h3>
+                  <h3 className="font-bold text-xl mt-2">Lifetime Schedule C Access</h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    Full year-round Schedule C tracking &amp; tax-season export packet
+                    Own your multi-year Schedule C bookkeeping web app forever
                   </p>
                   <div className="my-5">
-                    <span className="text-4xl font-extrabold">$129</span>
-                    <span className="text-sm text-slate-400">/year</span>
+                    <span className="text-4xl font-extrabold">$54.30</span>
+                    <span className="text-sm text-slate-400"> one-time fee</span>
                     <p className="text-xs text-emerald-400 font-medium mt-1">
-                      Save $51/yr vs. $15/month • 7-day free trial
+                      Only $4.53/mo in Year 1 • $0/mo every year after
                     </p>
                   </div>
                   <ul className="space-y-3 text-sm text-slate-300 mb-6">
@@ -638,14 +633,23 @@ export default function LandingPage({
                   </ul>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setCheckoutPlan('b2c_annual')}
-                  title="Start 7-day free trial ($129/year after)"
-                  className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
-                >
-                  Start 7-Day Free Trial ($129/yr after)
-                </button>
+                <div className="space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutPlan('b2c_lifetime')}
+                    title="Unlock Lifetime Schedule C Access for $54.30 one-time"
+                    className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
+                  >
+                    Unlock Lifetime Access ($54.30)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => triggerAuth('signup')}
+                    className="w-full text-center text-xs font-semibold text-slate-300 hover:text-white underline"
+                  >
+                    Purchased on Etsy? Activate Welcome Pass →
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
