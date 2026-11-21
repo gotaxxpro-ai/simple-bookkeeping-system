@@ -17,16 +17,31 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  Play,
 } from 'lucide-react';
 
-export default function LandingPage({ tenant, onOpenAuth }) {
-  const [audience, setAudience] = useState('tax_pros'); // 'tax_pros' | 'business_owners'
+export default function LandingPage({
+  tenant,
+  standaloneMode = false,
+  onOpenAuth,
+  onLaunchDemo,
+  launchingDemo = false,
+}) {
+  const [audience, setAudience] = useState(
+    standaloneMode ? 'business_owners' : 'tax_pros'
+  ); // 'tax_pros' | 'business_owners'
   const [b2cBilling, setB2cBilling] = useState('annual'); // 'monthly' ($15/mo) | 'annual' ($129/yr)
   const [openFaq, setOpenFaq] = useState(0);
   const [logoError, setLogoError] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [legalTab, setLegalTab] = useState(null);
+
+  useEffect(() => {
+    if (standaloneMode) {
+      setAudience('business_owners');
+    }
+  }, [standaloneMode]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -46,29 +61,53 @@ export default function LandingPage({ tenant, onOpenAuth }) {
     }
   };
 
-  const isCustomTenant = tenant && tenant.slug && tenant.slug !== 'default';
+  const isCustomTenant =
+    !standaloneMode && tenant && tenant.slug && tenant.slug !== 'default';
   const brandName = tenant?.brand_name || 'Simple Bookkeeping System';
   const accentColor = tenant?.primary_color || '#059669';
   const logoSrc = tenant?.logo_url || '/logo.png';
 
-  const faqs = [
-    {
-      q: 'Do my clients or users need a Google account to use this?',
-      a: 'No. Users register with any email address and password. All income, expenses, mileage, COGS, and home office records are stored securely in their private account.',
-    },
-    {
-      q: 'What is the difference between Service Bureau ($29/mo) and B2B ($249 one-time)?',
-      a: 'Both give your tax office a custom white-label portal with your logo, colors, client invite link, and Tax Office Admin report dashboard. Choose Service Bureau for low $29/month billing, or B2B for a single $249 one-time license fee with no recurring monthly charges.',
-    },
-    {
-      q: 'Can users import existing data from Google Sheets or bank statements?',
-      a: 'Yes. Both the Income and Expenses ledgers include a smart CSV importer with automatic column mapping, date formatting, and bulk editing tools.',
-    },
-    {
-      q: 'Why is Owner’s Draw tracked separately from Expenses?',
-      a: 'For sole proprietors and single-member LLCs, personal withdrawals (Owner’s Draw) are reductions of owner equity—not Schedule C deductible expenses. Separating them prevents clients from accidentally overstating business deductions.',
-    },
-  ];
+  const faqs = standaloneMode
+    ? [
+        {
+          q: 'Do I need a Google account or Excel/Google Sheets to use this?',
+          a: 'No. You register with any email address and password. All income, expenses, mileage, COGS, and home office records are stored securely in your private cloud ledger—no spreadsheets required.',
+        },
+        {
+          q: 'How do I activate my account if I purchased through Etsy or an online marketplace?',
+          a: 'Click "Create Account" (or "Get Started") at the top of this page, enter your name, email, and chosen password, and your private Schedule C workspace opens immediately.',
+        },
+        {
+          q: 'Can I import existing data from bank statements or spreadsheets?',
+          a: 'Yes. Both the Income and Expenses ledgers include a smart CSV importer with automatic column mapping, date formatting, credit card sign flipping, and bulk category editing.',
+        },
+        {
+          q: 'How do I send my year-end numbers to my tax preparer or file my taxes?',
+          a: 'Open the "Schedule C & Next Steps" tab inside your dashboard and click "Create Schedule C PDF" or "Export Schedule C CSV" to download a line-by-line IRS Form 1040 Schedule C report.',
+        },
+        {
+          q: 'Why is Owner’s Draw tracked separately from Expenses?',
+          a: 'For sole proprietors and single-member LLCs, personal withdrawals (Owner’s Draw) are reductions of owner equity—not Schedule C deductible expenses. Separating them prevents you from accidentally overstating business deductions.',
+        },
+      ]
+    : [
+        {
+          q: 'Do my clients or users need a Google account to use this?',
+          a: 'No. Users register with any email address and password. All income, expenses, mileage, COGS, and home office records are stored securely in their private account.',
+        },
+        {
+          q: 'What is the difference between Service Bureau ($29/mo) and B2B ($249 one-time)?',
+          a: 'Both give your tax office a custom white-label portal with your logo, colors, client invite link, and Tax Office Admin report dashboard. Choose Service Bureau for low $29/month billing, or B2B for a single $249 one-time license fee with no recurring monthly charges.',
+        },
+        {
+          q: 'Can users import existing data from Google Sheets or bank statements?',
+          a: 'Yes. Both the Income and Expenses ledgers include a smart CSV importer with automatic column mapping, date formatting, and bulk editing tools.',
+        },
+        {
+          q: 'Why is Owner’s Draw tracked separately from Expenses?',
+          a: 'For sole proprietors and single-member LLCs, personal withdrawals (Owner’s Draw) are reductions of owner equity—not Schedule C deductible expenses. Separating them prevents clients from accidentally overstating business deductions.',
+        },
+      ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -90,7 +129,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
 
       {/* Top Navigation */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             {!logoError && logoSrc ? (
               <img
@@ -118,11 +157,37 @@ export default function LandingPage({ tenant, onOpenAuth }) {
             <a href="#faq" className="hover:text-slate-900">FAQ</a>
           </nav>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {typeof onLaunchDemo === 'function' ? (
+              <button
+                type="button"
+                disabled={launchingDemo}
+                onClick={onLaunchDemo}
+                title="Explore a pre-loaded read-only bookkeeping demo"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition disabled:opacity-50"
+              >
+                <Play className="w-3.5 h-3.5" />
+                {launchingDemo ? 'Opening Demo...' : 'Live Demo'}
+              </button>
+            ) : (
+              <a
+                href="/?demo=true"
+                title="Explore a pre-loaded read-only bookkeeping demo"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition"
+              >
+                <Play className="w-3.5 h-3.5" />
+                Live Demo
+              </a>
+            )}
+
             <button
               type="button"
               onClick={() => triggerAuth('login')}
-              title="Sign in to an existing client or tax office account"
+              title={
+                standaloneMode
+                  ? 'Sign in to your bookkeeping account'
+                  : 'Sign in to an existing client or tax office account'
+              }
               className="px-3.5 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
             >
               Sign In
@@ -138,27 +203,13 @@ export default function LandingPage({ tenant, onOpenAuth }) {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-
-{/* Inside Top Header right-side button group */}
-{typeof onLaunchDemo === 'function' && (
-  <button
-    type="button"
-    disabled={launchingDemo}
-    onClick={onLaunchDemo}
-    title="Explore a pre-loaded read-only bookkeeping & tax office demo"
-    className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition disabled:opacity-50"
-  >
-    {launchingDemo ? 'Opening Demo...' : 'Live Demo'}
-  </button>
-)}
-          
         </div>
       </header>
 
       {/* Hero Section */}
       <section className="bg-slate-900 text-white py-16 sm:py-24 px-4">
         <div className="max-w-6xl mx-auto text-center">
-          {!isCustomTenant && (
+          {!isCustomTenant && !standaloneMode && (
             <div className="inline-flex p-1 rounded-full bg-slate-800 border border-slate-700 mb-8">
               <button
                 type="button"
@@ -189,11 +240,13 @@ export default function LandingPage({ tenant, onOpenAuth }) {
             </div>
           )}
 
-          {isCustomTenant || audience === 'business_owners' ? (
+          {standaloneMode || isCustomTenant || audience === 'business_owners' ? (
             <>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4">
                 <Sparkles className="w-3.5 h-3.5" />
-                Built Specifically for IRS Schedule C Filers
+                {standaloneMode
+                  ? 'Solo Edition • Built for Freelancers, Etsy Sellers & Single-Member LLCs'
+                  : 'Built Specifically for IRS Schedule C Filers'}
               </div>
               <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-4xl mx-auto leading-tight">
                 Stop Dreading Tax Season. Turn Receipts Into a Clean Schedule C Report in Minutes.
@@ -202,35 +255,67 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 Track business income, 23 IRS expense categories, vehicle mileage, inventory COGS, home office deductions, and owner’s draws—without bloated accounting software or spreadsheets.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-                {!isCustomTenant ? (
-                  <a
-                    href="#pricing"
-                    style={{ backgroundColor: accentColor }}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
-                  >
-                    Start for $15/mo or $129/yr
-                    <ArrowRight className="w-5 h-5" />
-                  </a>
+                {standaloneMode ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => triggerAuth('signup')}
+                      title="Create your solo Schedule C bookkeeping account"
+                      style={{ backgroundColor: accentColor }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
+                    >
+                      Create Your Free Account
+                      <ArrowRight className="w-5 h-5" />
+                    </button>
+                    <a
+                      href="/?demo=true"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
+                    >
+                      <Play className="w-4 h-4 text-emerald-400" />
+                      Try Live Interactive Demo
+                    </a>
+                  </>
+                ) : !isCustomTenant ? (
+                  <>
+                    <a
+                      href="#pricing"
+                      style={{ backgroundColor: accentColor }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
+                    >
+                      Start for $15/mo or $129/yr
+                      <ArrowRight className="w-5 h-5" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => triggerAuth('login')}
+                      title="Sign in to your existing bookkeeping account"
+                      className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
+                    >
+                      Sign In to Existing Account
+                    </button>
+                  </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => triggerAuth('signup')}
-                    title="Register your client bookkeeping account"
-                    style={{ backgroundColor: accentColor }}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
-                  >
-                    Create Your Bookkeeping Account
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => triggerAuth('signup')}
+                      title="Register your client bookkeeping account"
+                      style={{ backgroundColor: accentColor }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 text-base font-bold text-white rounded-xl hover:opacity-95 shadow-lg transition"
+                    >
+                      Create Your Bookkeeping Account
+                      <ArrowRight className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => triggerAuth('login')}
+                      title="Sign in to your existing bookkeeping account"
+                      className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
+                    >
+                      Sign In to Existing Account
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => triggerAuth('login')}
-                  title="Sign in to your existing bookkeeping account"
-                  className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition"
-                >
-                  Sign In to Existing Account
-                </button>
               </div>
             </>
           ) : (
@@ -315,7 +400,9 @@ export default function LandingPage({ tenant, onOpenAuth }) {
             Everything Needed for Schedule C — Nothing You Don’t
           </h2>
           <p className="mt-3 text-slate-600">
-            Every tab maps directly to IRS Schedule C line items so business owners stay organized and tax preparers save hours per return.
+            {standaloneMode
+              ? 'Every tab maps directly to IRS Schedule C line items so you stay organized year-round and hand your preparer—or DIY tax software—clean totals.'
+              : 'Every tab maps directly to IRS Schedule C line items so business owners stay organized and tax preparers save hours per return.'}
           </p>
         </div>
 
@@ -390,10 +477,12 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 1
               </div>
               <h3 className="font-bold text-base text-slate-900 mb-1">
-                Choose Your Plan &amp; Sign In
+                {standaloneMode ? 'Create Your Account' : 'Choose Your Plan & Sign In'}
               </h3>
               <p className="text-sm text-slate-600">
-                Select an individual business account or launch your white-label tax office portal in under a minute—no Google account required.
+                {standaloneMode
+                  ? 'Register with your email and password (or redeem your Etsy / marketplace welcome pass) in under a minute.'
+                  : 'Select an individual business account or launch your white-label tax office portal in under a minute—no Google account required.'}
               </p>
             </div>
 
@@ -423,14 +512,14 @@ export default function LandingPage({ tenant, onOpenAuth }) {
                 Run Year-End Tax Reports
               </h3>
               <p className="text-sm text-slate-600">
-                Filter any tax year or date range on the Dashboard and export a clean CSV or print-ready PDF Schedule C summary.
+                Filter any tax year on your Schedule C tab and export a clean CSV or print-ready PDF Schedule C summary in one click.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Pricing Section: B2C ($15/mo or $129/yr), Service Bureau ($29/mo), B2B ($249 one-time) */}
+      {/* Pricing Section: Adapts Automatically for Standalone Mode vs Multi-Tenant Platform */}
       {!isCustomTenant && (
         <section id="pricing" className="py-16 sm:py-20 px-4 max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-12">
@@ -438,203 +527,319 @@ export default function LandingPage({ tenant, onOpenAuth }) {
               Simple, Transparent Pricing
             </span>
             <h2 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mt-1">
-              Plans for Business Owners, Service Bureaus &amp; Tax Offices
+              {standaloneMode
+                ? 'Schedule C Bookkeeping for Self-Employed Business Owners'
+                : 'Plans for Business Owners, Service Bureaus & Tax Offices'}
             </h2>
             <p className="mt-3 text-slate-600">
-              Whether you are tracking your own Schedule C business or white-labeling the portal for your tax clients, pick the model that fits you best.
+              {standaloneMode
+                ? 'Start with a 7-day free trial or activate using your Etsy / marketplace welcome voucher.'
+                : 'Whether you are tracking your own Schedule C business or white-labeling the portal for your tax clients, pick the model that fits you best.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Tier 1: B2C ($15/mo or $129/yr) */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
+          {standaloneMode ? (
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Standalone Card 1: Monthly */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
+                <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    B2C • Small Business
+                    Flexible Monthly
                   </span>
-                  <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-[11px] font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => setB2cBilling('monthly')}
-                      title="Switch to $15/month billing"
-                      className={`px-2 py-1 rounded-md transition ${
-                        b2cBilling === 'monthly'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      Monthly
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setB2cBilling('annual')}
-                      title="Switch to $129/year discounted billing"
-                      className={`px-2 py-1 rounded-md transition ${
-                        b2cBilling === 'annual'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      Annual
-                    </button>
+                  <h3 className="font-bold text-xl text-slate-900 mt-2">
+                    Solo Business Monthly
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    For sole proprietors, 1099 contractors &amp; single-member LLCs
+                  </p>
+                  <div className="my-5">
+                    <span className="text-4xl font-extrabold text-slate-900">$15</span>
+                    <span className="text-sm text-slate-500">/month</span>
+                    <p className="text-xs text-emerald-600 font-medium mt-1">
+                      Includes 7-day free trial • Cancel anytime
+                    </p>
                   </div>
+                  <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Unlimited multi-year income &amp; expenses
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      All 23 IRS Schedule C categories
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Vehicle, COGS, Home Office &amp; Owner’s Draw
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      CSV bank import + PDF &amp; CSV tax reports
+                    </li>
+                  </ul>
                 </div>
 
-                <h3 className="font-bold text-lg text-slate-900 mt-3">Business Owner</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  For sole proprietors, contractors &amp; single-member LLCs
-                </p>
-
-                <div className="my-5">
-                  {b2cBilling === 'monthly' ? (
-                    <>
-                      <span className="text-4xl font-extrabold text-slate-900">$15</span>
-                      <span className="text-sm text-slate-500">/month</span>
-                      <p className="text-xs text-emerald-600 font-medium mt-1">
-                        Or save $51 with $129/year billing
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-4xl font-extrabold text-slate-900">$129</span>
-                      <span className="text-sm text-slate-500">/year</span>
-                      <p className="text-xs text-emerald-600 font-medium mt-1">
-                        Save $51/yr vs. $15/month
-                      </p>
-                    </>
-                  )}
+                <div className="space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutPlan('b2c_monthly')}
+                    title="Start 7-day free trial ($15/month after)"
+                    className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
+                  >
+                    Start 7-Day Free Trial ($15/mo after)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => triggerAuth('signup')}
+                    className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-900 underline"
+                  >
+                    Have an Etsy / Marketplace Pass? Create Account →
+                  </button>
                 </div>
-
-                <ul className="space-y-3 text-sm text-slate-600 mb-6">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Unlimited multi-year income &amp; expenses
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    All 23 IRS Schedule C categories
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Vehicle, COGS, Home Office &amp; Owner’s Draw
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    CSV bank import + PDF &amp; CSV tax reports
-                  </li>
-                </ul>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setCheckoutPlan(b2cBilling === 'monthly' ? 'b2c_monthly' : 'b2c_annual')
-                }
-                title="Open checkout for the Business Owner plan"
-                className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
-              >
-                {b2cBilling === 'monthly'
-  ? 'Start 7-Day Free Trial ($15/mo after)'
-  : 'Start 7-Day Free Trial ($129/yr after)'}
-              </button>
-            </div>
-
-            {/* Tier 2: Service Bureau ($29/mo) */}
-            <div className="bg-slate-900 text-white rounded-2xl border-2 border-emerald-500 p-7 shadow-xl flex flex-col justify-between relative">
-              <span className="absolute -top-3.5 right-6 bg-emerald-500 text-slate-950 text-[11px] font-extrabold uppercase px-3 py-0.5 rounded-full">
-                Popular White-Label
-              </span>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  White-Label Subscription
+              {/* Standalone Card 2: Annual Best Value */}
+              <div className="bg-slate-900 text-white rounded-2xl border-2 border-emerald-500 p-7 shadow-xl flex flex-col justify-between relative">
+                <span className="absolute -top-3.5 right-6 bg-emerald-500 text-slate-950 text-[11px] font-extrabold uppercase px-3 py-0.5 rounded-full">
+                  Best Value • Save $51/Yr
                 </span>
-                <h3 className="font-bold text-lg mt-3">Service Bureau</h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Low monthly subscription for tax offices &amp; service bureaus
-                </p>
-                <div className="my-5">
-                  <span className="text-4xl font-extrabold">$29</span>
-                  <span className="text-sm text-slate-400">/month</span>
-                  <p className="text-xs text-emerald-400 font-medium mt-1">
-                    Unlimited client accounts included
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    Annual Plan
+                  </span>
+                  <h3 className="font-bold text-xl mt-2">Solo Business Annual</h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Full year-round Schedule C tracking &amp; tax-season export packet
                   </p>
+                  <div className="my-5">
+                    <span className="text-4xl font-extrabold">$129</span>
+                    <span className="text-sm text-slate-400">/year</span>
+                    <p className="text-xs text-emerald-400 font-medium mt-1">
+                      Save $51/yr vs. $15/month • 7-day free trial
+                    </p>
+                  </div>
+                  <ul className="space-y-3 text-sm text-slate-300 mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      All tax years (2022–2026+) in one workspace
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      1-Click Bank &amp; Credit Card CSV importer
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      Printable IRS Schedule C PDF &amp; CSV reports
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      4-Step Schedule C Quick-Start Guide included
+                    </li>
+                  </ul>
                 </div>
-                <ul className="space-y-3 text-sm text-slate-300 mb-6">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    Custom logo, brand name &amp; accent colors
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    Branded client invite link &amp; booking button
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    Tax Office Admin client report viewer
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    1-click client Schedule C CSV &amp; PDF export
-                  </li>
-                </ul>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCheckoutPlan('service_bureau')}
-                title="Open checkout for the Service Bureau white-label plan"
-                className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
-              >
-                Start Service Bureau ($29/mo)
-              </button>
-            </div>
 
-            {/* Tier 3: B2B ($249 One-Time Fee) */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                  B2B • One-Time License
-                </span>
-                <h3 className="font-bold text-lg text-slate-900 mt-3">B2B White-Label</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Own your branded tax office portal with one payment
-                </p>
-                <div className="my-5">
-                  <span className="text-4xl font-extrabold text-slate-900">$249</span>
-                  <span className="text-sm text-slate-500"> one-time fee</span>
-                  <p className="text-xs text-indigo-600 font-medium mt-1">
-                    Pay once — zero recurring monthly fees
-                  </p>
-                </div>
-                <ul className="space-y-3 text-sm text-slate-600 mb-6">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Full white-label logo, colors &amp; URL slug
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Unlimited Schedule C client accounts
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    Tax Office Admin dashboard &amp; role controls
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    All future tax-year updates included
-                  </li>
-                </ul>
+                <button
+                  type="button"
+                  onClick={() => setCheckoutPlan('b2c_annual')}
+                  title="Start 7-day free trial ($129/year after)"
+                  className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
+                >
+                  Start 7-Day Free Trial ($129/yr after)
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setCheckoutPlan('b2b_onetime')}
-                title="Open checkout for the B2B one-time white-label license"
-                className="w-full text-center py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 font-semibold text-sm text-white transition"
-              >
-                Get B2B License ($249 One-Time)
-              </button>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Tier 1: B2C ($15/mo or $129/yr) */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      B2C • Small Business
+                    </span>
+                    <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-[11px] font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setB2cBilling('monthly')}
+                        title="Switch to $15/month billing"
+                        className={`px-2 py-1 rounded-md transition ${
+                          b2cBilling === 'monthly'
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        Monthly
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setB2cBilling('annual')}
+                        title="Switch to $129/year discounted billing"
+                        className={`px-2 py-1 rounded-md transition ${
+                          b2cBilling === 'annual'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        Annual
+                      </button>
+                    </div>
+                  </div>
+
+                  <h3 className="font-bold text-lg text-slate-900 mt-3">Business Owner</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    For sole proprietors, contractors &amp; single-member LLCs
+                  </p>
+
+                  <div className="my-5">
+                    {b2cBilling === 'monthly' ? (
+                      <>
+                        <span className="text-4xl font-extrabold text-slate-900">$15</span>
+                        <span className="text-sm text-slate-500">/month</span>
+                        <p className="text-xs text-emerald-600 font-medium mt-1">
+                          Or save $51 with $129/year billing
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-4xl font-extrabold text-slate-900">$129</span>
+                        <span className="text-sm text-slate-500">/year</span>
+                        <p className="text-xs text-emerald-600 font-medium mt-1">
+                          Save $51/yr vs. $15/month
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Unlimited multi-year income &amp; expenses
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      All 23 IRS Schedule C categories
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Vehicle, COGS, Home Office &amp; Owner’s Draw
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      CSV bank import + PDF &amp; CSV tax reports
+                    </li>
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCheckoutPlan(b2cBilling === 'monthly' ? 'b2c_monthly' : 'b2c_annual')
+                  }
+                  title="Open checkout for the Business Owner plan"
+                  className="w-full text-center py-2.5 px-4 rounded-xl border border-slate-300 font-semibold text-sm text-slate-800 hover:bg-slate-50 transition"
+                >
+                  {b2cBilling === 'monthly'
+                    ? 'Start 7-Day Free Trial ($15/mo after)'
+                    : 'Start 7-Day Free Trial ($129/yr after)'}
+                </button>
+              </div>
+
+              {/* Tier 2: Service Bureau ($29/mo) */}
+              <div className="bg-slate-900 text-white rounded-2xl border-2 border-emerald-500 p-7 shadow-xl flex flex-col justify-between relative">
+                <span className="absolute -top-3.5 right-6 bg-emerald-500 text-slate-950 text-[11px] font-extrabold uppercase px-3 py-0.5 rounded-full">
+                  Popular White-Label
+                </span>
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    White-Label Subscription
+                  </span>
+                  <h3 className="font-bold text-lg mt-3">Service Bureau</h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Low monthly subscription for tax offices &amp; service bureaus
+                  </p>
+                  <div className="my-5">
+                    <span className="text-4xl font-extrabold">$29</span>
+                    <span className="text-sm text-slate-400">/month</span>
+                    <p className="text-xs text-emerald-400 font-medium mt-1">
+                      Unlimited client accounts included
+                    </p>
+                  </div>
+                  <ul className="space-y-3 text-sm text-slate-300 mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      Custom logo, brand name &amp; accent colors
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      Branded client invite link &amp; booking button
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      Tax Office Admin client report viewer
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      1-click client Schedule C CSV &amp; PDF export
+                    </li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCheckoutPlan('service_bureau')}
+                  title="Open checkout for the Service Bureau white-label plan"
+                  className="w-full text-center py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-sm text-white transition"
+                >
+                  Start Service Bureau ($29/mo)
+                </button>
+              </div>
+
+              {/* Tier 3: B2B ($249 One-Time Fee) */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-7 shadow-sm flex flex-col justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                    B2B • One-Time License
+                  </span>
+                  <h3 className="font-bold text-lg text-slate-900 mt-3">B2B White-Label</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Own your branded tax office portal with one payment
+                  </p>
+                  <div className="my-5">
+                    <span className="text-4xl font-extrabold text-slate-900">$249</span>
+                    <span className="text-sm text-slate-500"> one-time fee</span>
+                    <p className="text-xs text-indigo-600 font-medium mt-1">
+                      Pay once — zero recurring monthly fees
+                    </p>
+                  </div>
+                  <ul className="space-y-3 text-sm text-slate-600 mb-6">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Full white-label logo, colors &amp; URL slug
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Unlimited Schedule C client accounts
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Tax Office Admin dashboard &amp; role controls
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      All future tax-year updates included
+                    </li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCheckoutPlan('b2b_onetime')}
+                  title="Open checkout for the B2B one-time white-label license"
+                  className="w-full text-center py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 font-semibold text-sm text-white transition"
+                >
+                  Get B2B License ($249 One-Time)
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -676,7 +881,7 @@ export default function LandingPage({ tenant, onOpenAuth }) {
         </div>
       </section>
 
-      {/* Footer with 5 Legal & Policy Pages */}
+      {/* Footer with All 6 Legal & Policy Pages */}
       <footer className="bg-slate-950 text-slate-400 py-10 px-4 text-xs">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -690,10 +895,14 @@ export default function LandingPage({ tenant, onOpenAuth }) {
             <button
               type="button"
               onClick={() => triggerAuth('login')}
-              title="Open the client and tax preparer login form"
+              title={
+                standaloneMode
+                  ? 'Open the solo bookkeeping login form'
+                  : 'Open the client and tax preparer login form'
+              }
               className="text-emerald-400 hover:underline font-semibold"
             >
-              Client &amp; Preparer Login →
+              {standaloneMode ? 'Account Login →' : 'Client & Preparer Login →'}
             </button>
           </div>
 
@@ -711,6 +920,13 @@ export default function LandingPage({ tenant, onOpenAuth }) {
               className="hover:text-white underline"
             >
               Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalTab('cookies')}
+              className="hover:text-white underline"
+            >
+              Cookie Policy
             </button>
             <button
               type="button"
