@@ -36,266 +36,273 @@ const DEFAULT_ORG = {
   is_active: true,
 };
 
-function exportScheduleCToPdf({
-  taxYear,
-  businessProfile = {},
-  branding = {},
-  grossIncome = 0,
-  expenseLines = [],
-  totalExpenses = 0,
-  netProfit = 0,
-  totalBusinessMiles = 0,
-  mileageDeduction = 0,
+function HiddenFunnelOfferPage({
+  brandName = 'Simple Bookkeeping System',
+  brandColor = '#059669',
+  videoEmbedUrl = 'https://www.youtube.com/embed/YOUR_VIDEO_ID',
+  stripeLinks = {
+    clientPromo: 'https://buy.stripe.com/YOUR_CLIENT_SPECIAL_LINK',
+    officeMonthlyPromo: 'https://buy.stripe.com/YOUR_OFFICE_MONTHLY_LINK',
+    officeWhiteLabelPromo: 'https://buy.stripe.com/YOUR_WHITE_LABEL_SPECIAL_LINK',
+  },
+  onExitToMain,
 }) {
-  const fmt = (val) =>
-    Number(val || 0).toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    });
+  const [activeGuideModal, setActiveGuideModal] = useState(null);
 
-  const escapeHtml = (str) =>
-    String(str ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div
+        className="px-4 py-2.5 text-center text-xs font-semibold tracking-wide text-white"
+        style={{ backgroundColor: brandColor }}
+      >
+        PRIVATE INVITATION PAGE • SPECIAL PARTNER &amp; TRAINING ACCESS
+      </div>
 
-  const brandName = escapeHtml(branding?.brand_name || 'Simple Bookkeeping System');
-  const supportEmail = escapeHtml(branding?.support_email || '');
-  const primaryColor = branding?.primary_color || '#059669';
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+              {brandName} — VIP Fast-Track
+            </p>
+            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Watch the 5-Minute Walkthrough &amp; Claim Your Special Offer
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              See how tax offices and small business owners stay IRS Schedule C ready year-round—and unlock exclusive bundle pricing below.
+            </p>
+          </div>
 
-  const bizName = escapeHtml(
-    businessProfile?.business_name || businessProfile?.name || 'Schedule C Business'
+          {typeof onExitToMain === 'function' && (
+            <button
+              type="button"
+              onClick={onExitToMain}
+              className="rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 transition"
+            >
+              Go to Main Portal →
+            </button>
+          )}
+        </div>
+
+        <div className="mt-8 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl">
+          <div className="aspect-video w-full bg-black">
+            <iframe
+              src={videoEmbedUrl}
+              title="Simple Bookkeeping System Training Walkthrough"
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 px-5 py-3.5 text-xs text-slate-300">
+            <span>
+              <strong>Training Overview:</strong> Client Schedule C tracking, automated mileage, PDF tax reports, and White-Label Tax Office branding.
+            </span>
+            <a href="/?demo=true" className="font-semibold text-emerald-400 hover:underline">
+              Launch Live Interactive Demo →
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900/80 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-white">
+                Included Quick-Start Implementation Guides
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Preview the step-by-step launch checklists included with your account:
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveGuideModal('office')}
+                className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition"
+              >
+                Read Office Admin Quick-Start Guide
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveGuideModal('client')}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
+              >
+                Read Schedule C Client Guide
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10">
+          <h2 className="text-center text-xl font-bold text-white sm:text-2xl">
+            Select Your Special Offer Access
+          </h2>
+          <p className="mt-1 text-center text-xs text-slate-400">
+            Instant account activation after checkout — set your password and log in immediately.
+          </p>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900 p-6">
+              <div>
+                <span className="inline-block rounded-full bg-slate-800 px-3 py-1 text-[11px] font-semibold text-slate-300">
+                  SMALL BUSINESS / 1099
+                </span>
+                <h3 className="mt-3 text-lg font-bold text-white">Solo Bookkeeping</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  For self-employed filers, freelancers, and single-member LLCs.
+                </p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-white">$19</span>
+                  <span className="text-xs text-slate-400">/ month</span>
+                </div>
+                <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                  <li>✓ Unlimited income &amp; Schedule C expense tracking</li>
+                  <li>✓ Automated business mileage log</li>
+                  <li>✓ 1-Click IRS Schedule C PDF export</li>
+                  <li>✓ Schedule C Client Quick-Start Guide</li>
+                </ul>
+              </div>
+
+              <a
+                href={stripeLinks.clientPromo}
+                className="mt-6 block w-full rounded-xl border border-slate-700 bg-slate-800 py-3 text-center text-xs font-bold text-white hover:bg-slate-700 transition"
+              >
+                Claim Solo Access →
+              </a>
+            </div>
+
+            <div
+              className="flex flex-col justify-between rounded-2xl border-2 bg-slate-900 p-6 shadow-xl"
+              style={{ borderColor: brandColor }}
+            >
+              <div>
+                <span
+                  className="inline-block rounded-full px-3 py-1 text-[11px] font-bold text-white"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  MOST POPULAR • TAX OFFICE WHITE-LABEL
+                </span>
+                <h3 className="mt-3 text-lg font-bold text-white">
+                  White-Label Tax Office Portal
+                </h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Your logo, colors, custom ?office=slug URL, and client roster management.
+                </p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-white">$249</span>
+                  <span className="text-xs text-slate-400">one-time license</span>
+                </div>
+                <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                  <li>✓ Custom firm branding, logo &amp; portal link</li>
+                  <li>✓ Add &amp; manage unlimited Schedule C clients</li>
+                  <li>✓ &ldquo;Open Books&rdquo; live view into every client ledger</li>
+                  <li>✓ Office Admin + Client Quick-Start Guides</li>
+                </ul>
+              </div>
+
+              <a
+                href={stripeLinks.officeWhiteLabelPromo}
+                className="mt-6 block w-full rounded-xl py-3 text-center text-xs font-bold text-white shadow-lg hover:opacity-95 transition"
+                style={{ backgroundColor: brandColor }}
+              >
+                Unlock White-Label Portal →
+              </a>
+            </div>
+
+            <div className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900 p-6">
+              <div>
+                <span className="inline-block rounded-full bg-slate-800 px-3 py-1 text-[11px] font-semibold text-slate-300">
+                  FLEXIBLE MONTHLY
+                </span>
+                <h3 className="mt-3 text-lg font-bold text-white">Service Bureau Monthly</h3>
+                <p className="mt-1 text-xs text-slate-400">
+                  Start your branded client bookkeeping portal with low monthly overhead.
+                </p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-white">$29</span>
+                  <span className="text-xs text-slate-400">/ month</span>
+                </div>
+                <ul className="mt-4 space-y-2 text-xs text-slate-300">
+                  <li>✓ Full White-Label Office Admin dashboard</li>
+                  <li>✓ Client account creation &amp; password resets</li>
+                  <li>✓ Year-round client Schedule C PDF exports</li>
+                  <li>✓ Cancel anytime</li>
+                </ul>
+              </div>
+
+              <a
+                href={stripeLinks.officeMonthlyPromo}
+                className="mt-6 block w-full rounded-xl border border-slate-700 bg-slate-800 py-3 text-center text-xs font-bold text-white hover:bg-slate-700 transition"
+              >
+                Start Monthly Portal →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {activeGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-6 text-slate-200 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">
+                {activeGuideModal === 'office'
+                  ? 'Office Admin Quick-Start Guide (4 Steps)'
+                  : 'Schedule C Client Quick-Start Guide (4 Steps)'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveGuideModal(null)}
+                className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+              >
+                Close ✕
+              </button>
+            </div>
+
+            {activeGuideModal === 'office' ? (
+              <div className="mt-4 space-y-4 text-xs leading-relaxed text-slate-300">
+                <div>
+                  <p className="font-bold text-emerald-400">1. Brand Your Client Portal (2 Mins)</p>
+                  <p>Open the <strong>Office Admin</strong> tab, enter your firm name, tagline, logo URL, support email, and brand color, then save.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">2. Copy &amp; Share Your Portal Link</p>
+                  <p>Share your unique <code>?office=your-slug</code> URL on your website and onboarding emails so clients always see your brand.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">3. Add &amp; Onboard Clients</p>
+                  <p>Click <strong>+ Add Client</strong> to create a client login with a temporary password, or let clients self-register through your branded link.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">4. Open Books &amp; Export Schedule C PDFs</p>
+                  <p>Click <strong>Open Books</strong> next to any client to review their live ledger and generate an IRS Schedule C PDF summary.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4 text-xs leading-relaxed text-slate-300">
+                <div>
+                  <p className="font-bold text-emerald-400">1. Set Up Your Business Profile (1 Min)</p>
+                  <p>Enter your Business Name, EIN (or SSN on file), NAICS code, and Tax Year.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">2. Log Business Income &amp; Expenses</p>
+                  <p>Record gross payments received and categorize business expenses under IRS Schedule C lines (Advertising, Contract Labor, Supplies, Software, Meals, Utilities).</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">3. Track Business Mileage</p>
+                  <p>Log work trips with date, miles driven, and business purpose to capture your standard mileage deduction.</p>
+                </div>
+                <div>
+                  <p className="font-bold text-emerald-400">4. Export Your Tax-Ready PDF Report</p>
+                  <p>Open the <strong>Schedule C &amp; Next Steps</strong> tab and click <strong>Create Schedule C PDF</strong> to hand a clean summary to your tax preparer.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
-  const ein = escapeHtml(businessProfile?.ein || 'SSN / On File');
-  const naics = escapeHtml(businessProfile?.naics_code || businessProfile?.naics || '—');
-  const ownerName = escapeHtml(businessProfile?.owner_name || '');
-
-  const rowsHtml =
-    expenseLines.length > 0
-      ? expenseLines
-          .map(
-            (item) => `
-          <tr>
-            <td>${escapeHtml(item.line || '')}</td>
-            <td>${escapeHtml(item.category || item.label || 'Expense')}</td>
-            <td class="num">${fmt(item.amount)}</td>
-          </tr>`
-          )
-          .join('')
-      : `<tr><td colspan="3" style="text-align:center;color:#64748b;">No categorized expenses recorded for ${escapeHtml(taxYear)}.</td></tr>`;
-
-  const printWindow = window.open('', '_blank', 'width=900,height=1050');
-  if (!printWindow) {
-    alert('Please allow pop-ups in your browser to generate your Schedule C PDF.');
-    return;
-  }
-
-  const generatedDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${taxYear} Schedule C Tax Summary - ${bizName}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #0f172a;
-      margin: 0;
-      padding: 36px;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      border-bottom: 3px solid ${primaryColor};
-      padding-bottom: 16px;
-      margin-bottom: 22px;
-    }
-    .brand { font-size: 18px; font-weight: 700; color: ${primaryColor}; }
-    .sub { font-size: 12px; color: #475569; margin-top: 2px; }
-    .badge {
-      background: #f1f5f9;
-      border: 1px solid #cbd5e1;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-weight: 700;
-      font-size: 13px;
-    }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px 24px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 14px 18px;
-      margin-bottom: 22px;
-    }
-    .meta-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; }
-    .meta-val { font-size: 13px; font-weight: 600; color: #0f172a; }
-    .kpi-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-bottom: 24px;
-    }
-    .kpi {
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 14px;
-    }
-    .kpi-title { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; }
-    .kpi-num { font-size: 20px; font-weight: 700; margin-top: 4px; }
-    h2 {
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #334155;
-      margin: 0 0 10px 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 22px;
-    }
-    th, td {
-      border-bottom: 1px solid #e2e8f0;
-      padding: 9px 10px;
-      text-align: left;
-    }
-    th {
-      background: #f1f5f9;
-      font-size: 11px;
-      text-transform: uppercase;
-      color: #475569;
-    }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    tr.total-row td {
-      font-weight: 700;
-      background: #f8fafc;
-      border-top: 2px solid #94a3b8;
-      border-bottom: 2px solid #94a3b8;
-    }
-    .footer {
-      margin-top: 28px;
-      padding-top: 12px;
-      border-top: 1px solid #e2e8f0;
-      font-size: 11px;
-      color: #64748b;
-      display: flex;
-      justify-content: space-between;
-    }
-    @media print {
-      body { padding: 18px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <div class="brand">${brandName}</div>
-      <div class="sub">IRS Schedule C (Form 1040) Profit or Loss From Business — Tax Preparer Summary</div>
-      ${supportEmail ? `<div class="sub">Prepared via ${supportEmail}</div>` : ''}
-    </div>
-    <div class="badge">Tax Year ${escapeHtml(taxYear)}</div>
-  </div>
-
-  <div class="meta-grid">
-    <div>
-      <div class="meta-label">Business Name</div>
-      <div class="meta-val">${bizName}</div>
-    </div>
-    <div>
-      <div class="meta-label">Employer ID Number (EIN)</div>
-      <div class="meta-val">${ein}</div>
-    </div>
-    <div>
-      <div class="meta-label">Principal Business Code (NAICS)</div>
-      <div class="meta-val">${naics}</div>
-    </div>
-    <div>
-      <div class="meta-label">Proprietor / Report Date</div>
-      <div class="meta-val">${ownerName ? `${ownerName} • ` : ''}${generatedDate}</div>
-    </div>
-  </div>
-
-  <div class="kpi-row">
-    <div class="kpi">
-      <div class="kpi-title">Part I — Gross Receipts / Income</div>
-      <div class="kpi-num" style="color:#059669;">${fmt(grossIncome)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-title">Part II — Total Expenses</div>
-      <div class="kpi-num" style="color:#dc2626;">${fmt(totalExpenses)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-title">Line 31 — Net Profit / (Loss)</div>
-      <div class="kpi-num" style="color:${Number(netProfit) >= 0 ? '#0f172a' : '#dc2626'};">${fmt(netProfit)}</div>
-    </div>
-  </div>
-
-  <h2>Part II — Schedule C Expense Breakdown</h2>
-  <table>
-    <thead>
-      <tr>
-        <th style="width:18%;">IRS Line</th>
-        <th>Expense Category</th>
-        <th class="num" style="width:24%;">Annual Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rowsHtml}
-      <tr class="total-row">
-        <td colspan="2">Total Schedule C Expenses (Line 28)</td>
-        <td class="num">${fmt(totalExpenses)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <h2>Part IV — Vehicle &amp; Business Mileage Summary</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Metric</th>
-        <th class="num">Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Total Business Miles Logged (${escapeHtml(taxYear)})</td>
-        <td class="num">${Number(totalBusinessMiles || 0).toLocaleString('en-US')} miles</td>
-      </tr>
-      <tr>
-        <td>Estimated Standard Mileage Deduction</td>
-        <td class="num">${fmt(mileageDeduction)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div class="footer">
-    <span>Generated by ${brandName}</span>
-    <span>Keep supporting receipts and mileage logs for at least 3 years.</span>
-  </div>
-
-  <script>
-    window.onload = function () {
-      window.focus();
-      window.print();
-    };
-  </script>
-</body>
-</html>`);
-
-  printWindow.document.close();
 }
 
 function DashboardQuickStartCard({
@@ -401,8 +408,8 @@ function DashboardQuickStartCard({
     },
     {
       num: '4',
-      title: 'Export Tax-Ready Report',
-      desc: 'Select your tax year and export your Schedule C totals in one click for tax filing.',
+      title: 'Export Tax-Ready PDF',
+      desc: 'Open Schedule C & Next Steps and click Create Schedule C PDF for tax filing.',
     },
   ];
 
@@ -510,6 +517,10 @@ export default function App() {
   const initialUrlSlug = (initialParams.get('office') || '').trim().toLowerCase();
   const checkoutSessionId = (initialParams.get('checkout_session_id') || '').trim();
 
+  const [showHiddenOffer, setShowHiddenOffer] = useState(() => {
+    return initialParams.get('offer') === 'vip' || initialParams.get('funnel') === 'special';
+  });
+
   const [launchingDemo, setLaunchingDemo] = useState(() => {
     return initialParams.get('demo') === 'true';
   });
@@ -560,7 +571,6 @@ export default function App() {
   const primaryColor = currentOrg?.primary_color || '#059669';
   const hasUrlLockedOffice = Boolean(initialUrlSlug && initialUrlSlug !== 'default');
 
-  // Load pre-filled Name & Email from Stripe when redirected with ?checkout_session_id=cs_...
   useEffect(() => {
     if (!checkoutSessionId) return;
     let isMounted = true;
@@ -790,7 +800,6 @@ export default function App() {
     setShowAuth(false);
   };
 
-  // Post-Stripe Checkout: User enters ONLY a password -> provisions account -> auto-logs in
   const handleCompleteCheckoutOnboarding = async (e) => {
     e.preventDefault();
     setAuthError(null);
@@ -832,7 +841,6 @@ export default function App() {
       });
       if (signInErr) throw signInErr;
 
-      // Remove ?checkout_session_id from URL and route B2B buyers directly to their new ?office=slug
       const nextUrl = data.org_slug
         ? `${window.location.pathname}?office=${data.org_slug}`
         : window.location.pathname;
@@ -989,6 +997,29 @@ export default function App() {
     handleBackToHome();
   };
 
+  // HIDDEN VIP FUNNEL PAGE (?offer=vip or ?funnel=special)
+  if (showHiddenOffer) {
+    return (
+      <HiddenFunnelOfferPage
+        brandName={currentOrg.brand_name}
+        brandColor={primaryColor}
+        videoEmbedUrl="https://www.youtube.com/embed/YOUR_TRAINING_VIDEO_ID"
+        stripeLinks={{
+          clientPromo: 'https://buy.stripe.com/YOUR_CLIENT_SPECIAL_LINK',
+          officeMonthlyPromo: 'https://buy.stripe.com/YOUR_OFFICE_MONTHLY_LINK',
+          officeWhiteLabelPromo: 'https://buy.stripe.com/YOUR_WHITE_LABEL_SPECIAL_LINK',
+        }}
+        onExitToMain={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('offer');
+          url.searchParams.delete('funnel');
+          window.history.replaceState({}, '', url.toString());
+          setShowHiddenOffer(false);
+        }}
+      />
+    );
+  }
+
   if (authLoading || launchingDemo || (session && loadingMembership)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-500">
@@ -997,7 +1028,6 @@ export default function App() {
     );
   }
 
-  // POST-STRIPE CHECKOUT: Password-only activation & immediate auto-login
   if (!session && checkoutSessionId) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -1409,27 +1439,6 @@ export default function App() {
   const userRole = (membership?.role || 'client').toLowerCase();
   const isAdmin = userRole === 'super_admin' || userRole === 'office_admin';
 
-  <button
-  type="button"
-  onClick={() =>
-    exportScheduleCToPdf({
-      taxYear: selectedYear,
-      businessProfile,
-      branding,
-      grossIncome: totalIncome,
-      expenseLines: scheduleCCategoryRows, // array of { line, category, amount }
-      totalExpenses,
-      netProfit,
-      totalBusinessMiles,
-      mileageDeduction,
-    })
-  }
-  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95 transition"
-  style={{ backgroundColor: branding?.primary_color || '#059669' }}
->
-  Create Schedule C PDF
-</button>
-  
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {isDemoUser && (
