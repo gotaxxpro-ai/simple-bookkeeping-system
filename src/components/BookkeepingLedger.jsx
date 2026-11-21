@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
+  Pencil,
   Trash2,
   Download,
   Upload,
@@ -493,6 +494,17 @@ export default function BookkeepingLedger({
   });
   const [savingTx, setSavingTx] = useState(false);
 
+  // Inline row editing state (Income, Expenses & Owner's Draw)
+  const [editingTxId, setEditingTxId] = useState(null);
+  const [editTxForm, setEditTxForm] = useState({
+    transaction_date: '',
+    category_id: '',
+    amount: '',
+    vendor_or_client: '',
+    description: '',
+  });
+  const [updatingTx, setUpdatingTx] = useState(false);
+
   const [showCsvModal, setShowCsvModal] = useState(false);
   const [csvFileName, setCsvFileName] = useState('');
   const [csvPreviewRows, setCsvPreviewRows] = useState([]);
@@ -528,6 +540,7 @@ export default function BookkeepingLedger({
   }, []);
 
   useEffect(() => {
+    setEditingTxId(null);
     if (activeTab === 'income') {
       const firstInc = categories.find((c) => c.type === 'income');
       setTxForm((prev) => ({ ...prev, category_id: firstInc ? firstInc.id : '' }));
@@ -540,7 +553,10 @@ export default function BookkeepingLedger({
   }, [activeTab, categories]);
 
   useEffect(() => {
-    if (targetUserId) loadYearData();
+    if (targetUserId) {
+      setEditingTxId(null);
+      loadYearData();
+    }
   }, [targetUserId, selectedYear]);
 
   const loadYearData = async () => {
@@ -837,11 +853,72 @@ export default function BookkeepingLedger({
     }
   };
 
+  const startEditingEntry = (tx) => {
+    if (readOnly) return;
+    setEditingTxId(tx.id);
+    setEditTxForm({
+      transaction_date: tx.transaction_date || '',
+      category_id: tx.category_id || '',
+      amount: String(tx.amount ?? ''),
+      vendor_or_client: tx.vendor_or_client || '',
+      description: tx.description || '',
+    });
+  };
+
+  const cancelEditingEntry = () => {
+    setEditingTxId(null);
+  };
+
+  const handleUpdateEntry = async (tx) => {
+    if (readOnly) return;
+    const numericAmount = parseFloat(editTxForm.amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      setStatusMessage({ type: 'error', text: 'Please enter a valid dollar amount greater than 0.' });
+      return;
+    }
+
+    setUpdatingTx(true);
+    setStatusMessage(null);
+    try {
+      const payload = {
+        transaction_date: editTxForm.transaction_date,
+        category_id: tx.type === 'owners_draw' ? null : editTxForm.category_id || null,
+        amount: numericAmount,
+        vendor_or_client:
+          editTxForm.vendor_or_client.trim() ||
+          (tx.type === 'owners_draw' ? 'Owner Personal Draw' : 'Unspecified'),
+        description: editTxForm.description.trim() || null,
+      };
+
+      const { error } = await supabase
+        .from('bookkeeping_transactions')
+        .update(payload)
+        .eq('id', tx.id)
+        .eq('user_id', targetUserId);
+
+      if (error) throw error;
+
+      setEditingTxId(null);
+      const updatedYear = parseInt(editTxForm.transaction_date.split('-')[0], 10);
+      if (updatedYear && updatedYear !== selectedYear) {
+        setSelectedYear(updatedYear);
+      } else {
+        await loadYearData();
+      }
+      setStatusMessage({ type: 'success', text: 'Entry updated.' });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: `Could not update entry: ${err.message}` });
+    } finally {
+      setUpdatingTx(false);
+    }
+  };
+
   const handleDeleteEntry = async (txId) => {
     if (readOnly || !window.confirm('Delete this entry?')) return;
     try {
       const { error } = await supabase.from('bookkeeping_transactions').delete().eq('id', txId);
       if (error) throw error;
+      if (editingTxId === txId) setEditingTxId(null);
       setTransactions((prev) => prev.filter((t) => t.id !== txId));
       setStatusMessage({ type: 'success', text: 'Entry deleted.' });
     } catch (err) {
@@ -1428,7 +1505,7 @@ export default function BookkeepingLedger({
         })}
       </div>
 
-      {/* TAB 1 & 2: INCOME & EXPENSES */}
+      {/* TAB 1 & 2: INCOME & EXPENSES (WITH INLINE ROW EDITING) */}
       {(activeTab === 'income' || activeTab === 'expenses') && (
         <div className="space-y-6">
           {!readOnly && (
@@ -1557,7 +1634,7 @@ export default function BookkeepingLedger({
                     <th className="py-3 px-6">{activeTab === 'income' ? 'Client' : 'Vendor'}</th>
                     <th className="py-3 px-6">Schedule C Line</th>
                     <th className="py-3 px-6 text-right">Amount</th>
-                    {!readOnly && <th className="py-3 px-6 text-right">Delete</th>}
+                    {!readOnly && <th className="py-3 px-6 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1574,34 +1651,136 @@ export default function BookkeepingLedger({
                       </td>
                     </tr>
                   ) : (
-                    (activeTab === 'income' ? incomeRows : expenseRows).map((tx) => (
-                      <tr key={tx.id} className="hover:bg-slate-50">
-                        <td className="py-3.5 px-6 font-mono text-xs text-slate-600">{tx.transaction_date}</td>
-                        <td className="py-3.5 px-6">
-                          <div className="font-medium text-slate-900">{tx.vendor_or_client}</div>
-                          {tx.description && <div className="text-xs text-slate-500">{tx.description}</div>}
-                        </td>
-                        <td className="py-3.5 px-6 text-xs">
-                          <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-medium">
-                            {tx.schedule_c_categories?.line_number}: {tx.schedule_c_categories?.name}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-6 text-right font-mono font-semibold">{formatCurrency(tx.amount)}</td>
-                        {!readOnly && (
-                          <td className="py-3.5 px-6 text-right">
-                            <Tooltip text="Delete this entry permanently">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEntry(tx.id)}
-                                className="text-slate-400 hover:text-red-600 p-1"
+                    (activeTab === 'income' ? incomeRows : expenseRows).map((tx) => {
+                      const isEditing = editingTxId === tx.id;
+
+                      if (isEditing) {
+                        return (
+                          <tr key={tx.id} className="bg-emerald-50/40">
+                            <td className="py-3 px-4">
+                              <input
+                                type="date"
+                                value={editTxForm.transaction_date}
+                                onChange={(e) =>
+                                  setEditTxForm({ ...editTxForm, transaction_date: e.target.value })
+                                }
+                                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                              />
+                            </td>
+                            <td className="py-3 px-4 space-y-1.5">
+                              <input
+                                type="text"
+                                placeholder={activeTab === 'income' ? 'Client / Payer' : 'Vendor / Merchant'}
+                                value={editTxForm.vendor_or_client}
+                                onChange={(e) =>
+                                  setEditTxForm({ ...editTxForm, vendor_or_client: e.target.value })
+                                }
+                                className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Notes / Business Purpose"
+                                value={editTxForm.description}
+                                onChange={(e) =>
+                                  setEditTxForm({ ...editTxForm, description: e.target.value })
+                                }
+                                className="w-full px-2.5 py-1 border border-slate-200 rounded-lg text-xs bg-white text-slate-600"
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <select
+                                value={editTxForm.category_id}
+                                onChange={(e) =>
+                                  setEditTxForm({ ...editTxForm, category_id: e.target.value })
+                                }
+                                className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
                               >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                                {categories
+                                  .filter((c) => c.type === tx.type)
+                                  .map((cat) => (
+                                    <option key={cat.id} value={cat.id}>
+                                      {cat.line_number} — {cat.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={editTxForm.amount}
+                                onChange={(e) =>
+                                  setEditTxForm({ ...editTxForm, amount: e.target.value })
+                                }
+                                className="w-28 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-right bg-white"
+                              />
+                            </td>
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={updatingTx}
+                                  onClick={() => handleUpdateEntry(tx)}
+                                  className="px-2.5 py-1.5 rounded-lg text-white text-xs font-semibold disabled:opacity-50"
+                                  style={{ backgroundColor: primaryColor }}
+                                >
+                                  {updatingTx ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={updatingTx}
+                                  onClick={cancelEditingEntry}
+                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={tx.id} className="hover:bg-slate-50">
+                          <td className="py-3.5 px-6 font-mono text-xs text-slate-600">{tx.transaction_date}</td>
+                          <td className="py-3.5 px-6">
+                            <div className="font-medium text-slate-900">{tx.vendor_or_client}</div>
+                            {tx.description && <div className="text-xs text-slate-500">{tx.description}</div>}
                           </td>
-                        )}
-                      </tr>
-                    ))
+                          <td className="py-3.5 px-6 text-xs">
+                            <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-medium">
+                              {tx.schedule_c_categories?.line_number}: {tx.schedule_c_categories?.name}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-6 text-right font-mono font-semibold">{formatCurrency(tx.amount)}</td>
+                          {!readOnly && (
+                            <td className="py-3.5 px-6 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1">
+                                <Tooltip text="Edit this entry">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditingEntry(tx)}
+                                    className="text-slate-400 hover:text-emerald-700 p-1"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                </Tooltip>
+                                <Tooltip text="Delete this entry permanently">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteEntry(tx.id)}
+                                    className="text-slate-400 hover:text-red-600 p-1"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </Tooltip>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -2162,7 +2341,7 @@ export default function BookkeepingLedger({
         </form>
       )}
 
-      {/* TAB 6: OWNER'S DRAW */}
+      {/* TAB 6: OWNER'S DRAW (WITH INLINE ROW EDITING) */}
       {activeTab === 'owners_draw' && (
         <div className="space-y-6">
           <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs leading-relaxed">
@@ -2237,7 +2416,7 @@ export default function BookkeepingLedger({
                   <th className="py-3 px-6">Date</th>
                   <th className="py-3 px-6">Description</th>
                   <th className="py-3 px-6 text-right">Amount</th>
-                  {!readOnly && <th className="py-3 px-6 text-right">Delete</th>}
+                  {!readOnly && <th className="py-3 px-6 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -2248,28 +2427,104 @@ export default function BookkeepingLedger({
                     </td>
                   </tr>
                 ) : (
-                  drawRows.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="py-3.5 px-6 font-mono text-xs text-slate-600">{tx.transaction_date}</td>
-                      <td className="py-3.5 px-6 font-medium text-slate-900">{tx.vendor_or_client}</td>
-                      <td className="py-3.5 px-6 text-right font-mono font-semibold text-blue-700">
-                        {formatCurrency(tx.amount)}
-                      </td>
-                      {!readOnly && (
-                        <td className="py-3.5 px-6 text-right">
-                          <Tooltip text="Delete this draw entry">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEntry(tx.id)}
-                              className="text-slate-400 hover:text-red-600 p-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </Tooltip>
+                  drawRows.map((tx) => {
+                    const isEditing = editingTxId === tx.id;
+
+                    if (isEditing) {
+                      return (
+                        <tr key={tx.id} className="bg-blue-50/40">
+                          <td className="py-3 px-4">
+                            <input
+                              type="date"
+                              value={editTxForm.transaction_date}
+                              onChange={(e) =>
+                                setEditTxForm({ ...editTxForm, transaction_date: e.target.value })
+                              }
+                              className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                            />
+                          </td>
+                          <td className="py-3 px-4">
+                            <input
+                              type="text"
+                              placeholder="Owner Personal Transfer"
+                              value={editTxForm.vendor_or_client}
+                              onChange={(e) =>
+                                setEditTxForm({ ...editTxForm, vendor_or_client: e.target.value })
+                              }
+                              className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+                            />
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={editTxForm.amount}
+                              onChange={(e) =>
+                                setEditTxForm({ ...editTxForm, amount: e.target.value })
+                              }
+                              className="w-28 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono text-right bg-white"
+                            />
+                          </td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={updatingTx}
+                                onClick={() => handleUpdateEntry(tx)}
+                                className="px-2.5 py-1.5 rounded-lg text-white text-xs font-semibold disabled:opacity-50"
+                                style={{ backgroundColor: primaryColor }}
+                              >
+                                {updatingTx ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={updatingTx}
+                                onClick={cancelEditingEntry}
+                                className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs font-semibold"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return (
+                      <tr key={tx.id} className="hover:bg-slate-50">
+                        <td className="py-3.5 px-6 font-mono text-xs text-slate-600">{tx.transaction_date}</td>
+                        <td className="py-3.5 px-6 font-medium text-slate-900">{tx.vendor_or_client}</td>
+                        <td className="py-3.5 px-6 text-right font-mono font-semibold text-blue-700">
+                          {formatCurrency(tx.amount)}
                         </td>
-                      )}
-                    </tr>
-                  ))
+                        {!readOnly && (
+                          <td className="py-3.5 px-6 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1">
+                              <Tooltip text="Edit this draw entry">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingEntry(tx)}
+                                  className="text-slate-400 hover:text-emerald-700 p-1"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                              <Tooltip text="Delete this draw entry">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEntry(tx.id)}
+                                  className="text-slate-400 hover:text-red-600 p-1"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
