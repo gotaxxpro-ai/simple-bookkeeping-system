@@ -5,6 +5,7 @@ import {
   Download,
   Upload,
   FileSpreadsheet,
+  FileText,
   TrendingUp,
   TrendingDown,
   CheckCircle2,
@@ -59,6 +60,330 @@ function getIrsBusinessMileageRate(year, period = 'h2') {
   return { rate: 0.76, label: `$0.76/mi (${yr} Standard Rate)` };
 }
 
+function exportScheduleCToPdf({
+  taxYear,
+  worksheet = {},
+  calculations = {},
+  mileageRatePeriod = 'h2',
+  officeName = 'Simple Bookkeeping System',
+  supportEmail = '',
+  primaryColor = '#059669',
+  targetUserName = '',
+}) {
+  const fmt = (val) =>
+    Number(val || 0).toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    });
+
+  const escapeHtml = (str) =>
+    String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const safeBrand = escapeHtml(officeName || 'Simple Bookkeeping System');
+  const safeSupport = escapeHtml(supportEmail || '');
+  const safeBizName = escapeHtml(worksheet.business_name || 'Schedule C Business');
+  const safeActivity = escapeHtml(worksheet.business_activity || '—');
+  const safeNaics = escapeHtml(worksheet.naics_code || '—');
+  const safeOwner = escapeHtml(targetUserName || '');
+
+  const incomeRowsHtml = (calculations.incomeLines || [])
+    .map(
+      (l) => `
+      <tr class="${l.txCount === 0 ? 'muted' : ''}">
+        <td class="mono">${escapeHtml(l.line_number)}</td>
+        <td>${escapeHtml(l.name)}</td>
+        <td class="num">${fmt(l.grossTotal)}</td>
+        <td class="num">${fmt(l.grossTotal)}</td>
+      </tr>`
+    )
+    .join('');
+
+  const expenseRowsHtml = (calculations.expenseLines || [])
+    .map(
+      (l) => `
+      <tr class="${l.txCount === 0 ? 'muted' : ''}">
+        <td class="mono">${escapeHtml(l.line_number)}</td>
+        <td>${escapeHtml(l.name)}${
+          Number(l.deduction_rate) < 100 ? ` <span class="note">(${l.deduction_rate}% limit)</span>` : ''
+        }</td>
+        <td class="num">${fmt(l.grossTotal)}</td>
+        <td class="num">${fmt(l.deductibleTotal)}</td>
+      </tr>`
+    )
+    .join('');
+
+  const rateInfo = getIrsBusinessMileageRate(taxYear, mileageRatePeriod);
+  const vehicles = Array.isArray(worksheet.vehicles) ? worksheet.vehicles : [];
+  const vehicleRowsHtml =
+    vehicles.length > 0
+      ? vehicles
+          .map((v, idx) => {
+            const vBiz = Number(v.business_miles) || 0;
+            const vComm = Number(v.commuting_miles) || 0;
+            const vOther = Number(v.other_miles) || 0;
+            const vTot = vBiz + vComm + vOther;
+            const vPct = vTot > 0 ? ((vBiz / vTot) * 100).toFixed(1) : '0.0';
+            const vStd = vBiz * rateInfo.rate;
+            const label =
+              [v.vehicle_model, v.vehicle_type].filter(Boolean).join(' ') || `Vehicle #${idx + 1}`;
+            return `
+            <tr>
+              <td>${escapeHtml(label)}</td>
+              <td>${escapeHtml(v.date_placed_in_service || '—')}</td>
+              <td class="num">${vBiz.toLocaleString()} mi (${vPct}%)</td>
+              <td class="num">${vComm.toLocaleString()} mi</td>
+              <td class="num">${vOther.toLocaleString()} mi</td>
+              <td class="num">${fmt(vStd)}</td>
+            </tr>`;
+          })
+          .join('')
+      : `<tr><td colspan="6" style="text-align:center;color:#64748b;">No vehicles logged for ${escapeHtml(taxYear)}.</td></tr>`;
+
+  const printWindow = window.open('', '_blank', 'width=940,height=1100');
+  if (!printWindow) {
+    alert('Please allow pop-ups in your browser to generate your Schedule C PDF.');
+    return;
+  }
+
+  const generatedDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${taxYear} Schedule C Tax Summary - ${safeBizName}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0f172a;
+      margin: 0;
+      padding: 32px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid ${primaryColor};
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .brand { font-size: 18px; font-weight: 700; color: ${primaryColor}; }
+    .sub { font-size: 11.5px; color: #475569; margin-top: 2px; }
+    .badge {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12.5px;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px 24px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+    }
+    .meta-label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 600; }
+    .meta-val { font-size: 12.5px; font-weight: 600; color: #0f172a; }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .kpi {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .kpi-title { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 600; }
+    .kpi-num { font-size: 16px; font-weight: 700; margin-top: 3px; }
+    h2 {
+      font-size: 12.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #334155;
+      margin: 16px 0 8px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      color: #475569;
+    }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+    tr.muted td { color: #94a3b8; }
+    tr.sub-row td { background: #f8fafc; font-weight: 600; }
+    tr.gross-row td { background: #ecfdf5; font-weight: 700; }
+    tr.net-row td {
+      background: #0f172a;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .note { font-size: 10.5px; color: #b45309; }
+    .footer {
+      margin-top: 22px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 10.5px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+    @media print {
+      body { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">${safeBrand}</div>
+      <div class="sub">IRS Form 1040 Schedule C — Profit or Loss From Business Summary</div>
+      ${safeSupport ? `<div class="sub">Tax Office Support: ${safeSupport}</div>` : ''}
+    </div>
+    <div class="badge">Tax Year ${escapeHtml(taxYear)}</div>
+  </div>
+
+  <div class="meta-grid">
+    <div>
+      <div class="meta-label">Business Name (Line C)</div>
+      <div class="meta-val">${safeBizName}</div>
+    </div>
+    <div>
+      <div class="meta-label">Principal Business Code / NAICS (Line B)</div>
+      <div class="meta-val">${safeNaics}</div>
+    </div>
+    <div>
+      <div class="meta-label">Business Activity / Profession (Line A)</div>
+      <div class="meta-val">${safeActivity}</div>
+    </div>
+    <div>
+      <div class="meta-label">Proprietor / Generated Date</div>
+      <div class="meta-val">${safeOwner ? `${safeOwner} • ` : ''}${generatedDate}</div>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-title">Part I — Net Sales</div>
+      <div class="kpi-num">${fmt(calculations.netSales)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-title">Deductible Expenses</div>
+      <div class="kpi-num">${fmt((calculations.totalDeductibleExpenses || 0) + (calculations.homeOfficeDeduction || 0))}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-title">Line 31 — Net Profit</div>
+      <div class="kpi-num" style="color:${Number(calculations.netProfit) >= 0 ? '#059669' : '#dc2626'};">${fmt(calculations.netProfit)}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-title">Owner&apos;s Draw (Memo)</div>
+      <div class="kpi-num" style="color:#1d4ed8;">${fmt(calculations.totalOwnersDraw)}</div>
+    </div>
+  </div>
+
+  <h2>Part I &amp; Part II — Schedule C Line-by-Line Report</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%;">IRS Line</th>
+        <th>Category</th>
+        <th class="num" style="width:20%;">Gross</th>
+        <th class="num" style="width:22%;">Allowable / Net</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${incomeRowsHtml}
+      <tr class="sub-row">
+        <td class="mono">Line 4</td>
+        <td>Cost of Goods Sold (Part III)</td>
+        <td class="num">${fmt(calculations.totalCogs)}</td>
+        <td class="num">-${fmt(calculations.totalCogs)}</td>
+      </tr>
+      <tr class="gross-row">
+        <td class="mono">Line 7</td>
+        <td>Gross Profit</td>
+        <td class="num">—</td>
+        <td class="num">${fmt(calculations.grossProfit)}</td>
+      </tr>
+      ${expenseRowsHtml}
+      <tr class="sub-row">
+        <td class="mono">Line 30</td>
+        <td>Business Use of Home (${escapeHtml(worksheet.home_office_method || 'simplified')})</td>
+        <td class="num">—</td>
+        <td class="num">${fmt(calculations.homeOfficeDeduction)}</td>
+      </tr>
+      <tr class="net-row">
+        <td class="mono">Line 31</td>
+        <td>Net Profit or (Loss)</td>
+        <td class="num">—</td>
+        <td class="num">${fmt(calculations.netProfit)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Part IV — Vehicle &amp; Business Mileage Summary (${escapeHtml(rateInfo.label)})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Vehicle</th>
+        <th>Placed in Service</th>
+        <th class="num">Business Miles</th>
+        <th class="num">Commuting</th>
+        <th class="num">Other</th>
+        <th class="num">Est. Std. Mileage</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${vehicleRowsHtml}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <span>Generated by ${safeBrand}</span>
+    <span>Owner&apos;s Draws (${fmt(calculations.totalOwnersDraw)}) are non-deductible personal transfers.</span>
+  </div>
+
+  <script>
+    window.onload = function () {
+      window.focus();
+      window.print();
+    };
+  </script>
+</body>
+</html>`);
+
+  printWindow.document.close();
+}
+
 const DEFAULT_WORKSHEET = {
   business_name: '',
   business_activity: '',
@@ -98,7 +423,7 @@ const NEXT_STEPS_LIST = [
   { id: 'vehicle', title: 'Log Business Mileage & Vehicle Details', desc: 'Enter business, commuting, and personal miles plus date placed in service for each vehicle.' },
   { id: 'cogs_home', title: 'Review Cost of Goods Sold & Home Office', desc: 'Update inventory totals (if selling products) and home office square footage.' },
   { id: 'draws', title: 'Verify Owner’s Draws', desc: 'Ensure personal transfers are logged under Owner’s Draw and excluded from expenses.' },
-  { id: 'export', title: 'Export Schedule C Report & Email Tax Office', desc: 'Download your Schedule C CSV summary and notify your tax preparer for review.' },
+  { id: 'export', title: 'Export Schedule C Report & Email Tax Office', desc: 'Download your Schedule C PDF or CSV summary and notify your tax preparer for review.' },
 ];
 
 function parseCsvLine(line) {
@@ -629,6 +954,7 @@ export default function BookkeepingLedger({
     setWorksheet((prev) => ({ ...prev, next_steps_completed: updatedSteps }));
     await handleSaveWorksheet(null, updatedSteps);
   };
+
   const calculations = useMemo(() => {
     const netPurchases = (Number(worksheet.cogs_purchases) || 0) - (Number(worksheet.cogs_personal_withdrawals) || 0);
     const totalGoodsAvailable =
@@ -750,7 +1076,7 @@ export default function BookkeepingLedger({
       `Estimated Net Profit (Line 31): ${formatCurrency(calculations.netProfit)}\n` +
       `Owner's Draw (YTD Non-Deductible): ${formatCurrency(calculations.totalOwnersDraw)}\n` +
       `Vehicles Logged: ${(worksheet.vehicles || []).length} (${calculations.totalBusinessMiles.toLocaleString()} business miles | Est. Std. Mileage: ${formatCurrency(calculations.totalEstimatedStandardMileageDeduction)})\n\n` +
-      `I have exported my ${selectedYear} Schedule C CSV report and am ready for your review.\n\n` +
+      `I have exported my ${selectedYear} Schedule C report and am ready for your review.\n\n` +
       `Best regards,\n${targetUserName || ''}`
     );
   };
@@ -789,6 +1115,19 @@ export default function BookkeepingLedger({
       });
       setTimeout(() => setCopiedSummary(false), 3000);
     }
+  };
+
+  const handleExportPdf = () => {
+    exportScheduleCToPdf({
+      taxYear: selectedYear,
+      worksheet,
+      calculations,
+      mileageRatePeriod,
+      officeName,
+      supportEmail,
+      primaryColor,
+      targetUserName,
+    });
   };
 
   const handleExportCsv = () => {
@@ -898,7 +1237,7 @@ export default function BookkeepingLedger({
         </div>
       )}
 
-      {/* Top Bar: Tax Year Selector + Import CSV + Export CSV */}
+      {/* Top Bar: Tax Year Selector + Import CSV + Export PDF + Export CSV */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 bg-slate-100 px-3.5 py-2 rounded-xl border border-slate-200">
@@ -939,6 +1278,16 @@ export default function BookkeepingLedger({
               </button>
             </Tooltip>
           )}
+          <Tooltip text="Generate a printable / Save-as-PDF IRS Form 1040 Schedule C summary" position="bottom">
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 text-xs font-semibold rounded-xl shadow-xs"
+            >
+              <FileText className="w-4 h-4 text-emerald-700" />
+              Create Schedule C PDF
+            </button>
+          </Tooltip>
           <Tooltip text="Download your complete line-by-line IRS Form 1040 Schedule C CSV report" position="bottom">
             <button
               type="button"
@@ -998,7 +1347,6 @@ export default function BookkeepingLedger({
               className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm disabled:bg-slate-50"
             />
           </div>
-{/* NAICS Code field */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-semibold text-slate-700">
@@ -1933,13 +2281,40 @@ export default function BookkeepingLedger({
       {activeTab === 'schedule_c' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-800">
-                IRS Form 1040 Schedule C Summary ({selectedYear})
-              </h3>
-              <span className="text-sm font-bold text-emerald-700">
-                Net Profit (Line 31): {formatCurrency(calculations.netProfit)}
-              </span>
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">
+                  IRS Form 1040 Schedule C Summary ({selectedYear})
+                </h3>
+                <span className="text-xs font-semibold text-emerald-700">
+                  Net Profit (Line 31): {formatCurrency(calculations.netProfit)}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Tooltip text="Generate a printable / Save-as-PDF Schedule C tax summary report">
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-sm hover:opacity-95 transition"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <FileText className="w-4 h-4" />
+                    Create Schedule C PDF
+                  </button>
+                </Tooltip>
+
+                <Tooltip text="Download line-by-line Schedule C totals as CSV">
+                  <button
+                    type="button"
+                    onClick={handleExportCsv}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export CSV
+                  </button>
+                </Tooltip>
+              </div>
             </div>
             <table className="w-full text-left border-collapse text-sm">
               <thead>
