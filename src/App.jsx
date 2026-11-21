@@ -36,16 +36,222 @@ const DEFAULT_ORG = {
   is_active: true,
 };
 
-function ClientQuickStartCard({ brandColor = '#059669', onNavigateTab }) {
-  const STORAGE_KEY = 'sbs_client_quickstart_collapsed_v1';
+function DashboardQuickStartCard({
+  role = 'client',
+  brandColor = '#059669',
+  officeSlug = '',
+  onNavigateTab,
+}) {
+  const normalizedRole = String(role || 'client').toLowerCase();
+  const isOfficeAdmin =
+    normalizedRole === 'office_admin' || normalizedRole === 'super_admin';
+
+  const storageKey = isOfficeAdmin
+    ? 'sbs_office_admin_quickstart_collapsed_v1'
+    : 'sbs_client_quickstart_collapsed_v1';
 
   const [isCollapsed, setIsCollapsed] = React.useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === 'true';
+      return localStorage.getItem(storageKey) === 'true';
     } catch {
       return false;
     }
   });
+
+  const [copiedLink, setCopiedLink] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      setIsCollapsed(localStorage.getItem(storageKey) === 'true');
+    } catch {
+      setIsCollapsed(false);
+    }
+  }, [storageKey]);
+
+  const toggleCollapsed = () => {
+    const next = !isCollapsed;
+    setIsCollapsed(next);
+    try {
+      localStorage.setItem(storageKey, String(next));
+    } catch {}
+  };
+
+  const handleCopyPortalLink = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const portalUrl =
+      officeSlug && officeSlug !== 'default'
+        ? `${origin}/?office=${encodeURIComponent(officeSlug)}`
+        : origin;
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(portalUrl).catch(() => {});
+    }
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const officeAdminSteps = [
+    {
+      num: '1',
+      title: 'Brand Your Client Portal',
+      desc: 'Set your firm name, logo, support email, and brand color so clients see your tax practice.',
+      actionLabel: 'Open Office Admin',
+      tab: 'admin',
+    },
+    {
+      num: '2',
+      title: 'Share Your Portal Link',
+      desc: 'Copy your custom ?office=slug link to put on your website, email signature, and welcome emails.',
+      actionLabel: copiedLink ? 'Copied Portal Link!' : 'Copy Portal Link',
+      onClick: handleCopyPortalLink,
+    },
+    {
+      num: '3',
+      title: 'Add & Onboard Clients',
+      desc: 'Click + Add Client in Office Admin to create accounts with a temporary password in seconds.',
+      actionLabel: 'Manage Clients',
+      tab: 'admin',
+    },
+    {
+      num: '4',
+      title: 'Review & Export Schedule C',
+      desc: 'Click Open Books on any client to inspect their live ledger and export tax-ready totals.',
+      actionLabel: 'View Client Roster',
+      tab: 'admin',
+    },
+  ];
+
+  const clientSteps = [
+    {
+      num: '1',
+      title: 'Set Up Business Profile',
+      desc: 'Add your business name, EIN, and NAICS code so your Schedule C header is ready.',
+      actionLabel: 'Open Profile',
+      tab: 'profile',
+    },
+    {
+      num: '2',
+      title: 'Log Income & Expenses',
+      desc: 'Record gross payments received and categorize business bills under IRS Schedule C lines.',
+      actionLabel: 'Add Transaction',
+      tab: 'transactions',
+    },
+    {
+      num: '3',
+      title: 'Track Business Mileage',
+      desc: 'Log business trips with date, miles driven, and purpose to maximize your vehicle deduction.',
+      actionLabel: 'Log Mileage',
+      tab: 'mileage',
+    },
+    {
+      num: '4',
+      title: 'Export Tax-Ready Report',
+      desc: 'Select your tax year and export your Schedule C totals in one click for tax filing.',
+      actionLabel: 'View Schedule C',
+      tab: 'reports',
+    },
+  ];
+
+  const steps = isOfficeAdmin ? officeAdminSteps : clientSteps;
+
+  return (
+    <div className="mb-6 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      {/* Header Bar */}
+      <div className="flex items-center justify-between gap-4 px-5 py-3.5 bg-slate-50 border-b border-slate-200/80">
+        <div className="flex items-center gap-3">
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
+            style={{ backgroundColor: brandColor }}
+          >
+            {isOfficeAdmin ? '★' : '?'}
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              {isOfficeAdmin
+                ? 'Office Admin Quick-Start Guide: Launch Your White-Label Portal'
+                : 'Quick-Start Guide: Stay Tax-Ready in 10 Minutes a Week'}
+            </h3>
+            {isCollapsed && (
+              <p className="text-xs text-slate-500">
+                {isOfficeAdmin
+                  ? '4 steps to brand your portal, copy your client link, add clients, and export Schedule C reports.'
+                  : '4 simple steps to log income, categorize expenses, track mileage, and export Schedule C.'}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition"
+        >
+          {isCollapsed ? 'Show Guide' : 'Hide Guide'}
+        </button>
+      </div>
+
+      {/* Collapsible 4-Step Grid */}
+      {!isCollapsed && (
+        <div className="p-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {steps.map((step) => (
+              <div
+                key={step.num}
+                className="flex flex-col justify-between rounded-lg border border-slate-200/90 bg-slate-50/60 p-4"
+              >
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
+                      style={{ backgroundColor: brandColor }}
+                    >
+                      {step.num}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {step.title}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-600">{step.desc}</p>
+                </div>
+
+                {(typeof step.onClick === 'function' ||
+                  typeof onNavigateTab === 'function') && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      step.onClick ? step.onClick() : onNavigateTab(step.tab)
+                    }
+                    className="mt-3 self-start text-xs font-semibold hover:underline"
+                    style={{ color: brandColor }}
+                  >
+                    {step.actionLabel} →
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-200/70 px-4 py-2.5 text-xs text-slate-700">
+            <span>
+              {isOfficeAdmin ? (
+                <>
+                  <strong>Pro Tip:</strong> Add a test client using a second email and click{' '}
+                  <strong>Open Books</strong> to experience your branded client view firsthand.
+                </>
+              ) : (
+                <>
+                  <strong>Weekly Habit:</strong> Every Friday, log the week&apos;s deposits,
+                  business receipts over $75, and work miles.
+                </>
+              )}
+            </span>
+            <span className="text-slate-500">Your preference is saved automatically.</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
   const toggleCollapsed = () => {
     const next = !isCollapsed;
