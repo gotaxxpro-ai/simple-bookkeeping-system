@@ -3,6 +3,7 @@ import {
   X,
   FileText,
   Shield,
+  Cookie,
   AlertTriangle,
   Lock,
   Database,
@@ -12,6 +13,7 @@ import {
 const POLICY_TABS = [
   { id: 'terms', label: 'Terms of Service', icon: FileText },
   { id: 'privacy', label: 'Privacy Policy', icon: Shield },
+  { id: 'cookies', label: 'Cookie Policy', icon: Cookie },
   { id: 'disclaimer', label: 'Tax & Accuracy Disclaimer', icon: AlertTriangle },
   { id: 'security', label: 'Security & Breach Policy', icon: Lock },
   { id: 'retention', label: 'Data Ownership & Termination', icon: Database },
@@ -162,7 +164,7 @@ export default function LegalModal({
 
               <h4 className="font-bold text-slate-900">2.3 Retention, Deletion &amp; User Privacy Rights</h4>
               <p>
-                You may review, edit, or export your bookkeeping data in CSV format at any time inside your dashboard. You may request account deletion by contacting{' '}
+                You may review, edit, or export your bookkeeping data in CSV or PDF format at any time inside your dashboard. You may request account deletion by contacting{' '}
                 <a href={`mailto:${contactEmail}`} className="text-emerald-700 font-semibold underline">
                   {contactEmail}
                 </a>
@@ -171,23 +173,64 @@ export default function LegalModal({
             </>
           )}
 
+          {activeTab === 'cookies' && (
+            <>
+              <h3 className="text-xl font-extrabold text-slate-900">
+                3. Cookie &amp; Browser Storage Policy
+              </h3>
+              <p>
+                <strong>{brandName}</strong> uses strictly necessary cookies and browser local storage (<code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code>) to keep your bookkeeping workspace secure, authenticated, and responsive. We do <strong>not</strong> sell your personal data or deploy third-party behavioral advertising trackers inside your private financial ledger.
+              </p>
+
+              <h4 className="font-bold text-slate-900">3.1 Strictly Necessary Authentication &amp; Security Storage</h4>
+              <ul className="list-disc pl-5 space-y-1.5">
+                <li>
+                  <strong>Session &amp; Authentication Tokens (Supabase Auth):</strong> Stored in browser <code className="text-xs bg-slate-100 px-1 rounded">localStorage</code> / secure cookies (<code className="text-xs bg-slate-100 px-1 rounded">sb-*-auth-token</code>) so you remain signed in across page refreshes and protected by Row-Level Security (RLS).
+                </li>
+                <li>
+                  <strong>Payment &amp; Fraud Prevention (Stripe):</strong> When you complete a subscription or license checkout via Stripe, Stripe sets essential security cookies (such as <code className="text-xs bg-slate-100 px-1 rounded">__stripe_mid</code> and <code className="text-xs bg-slate-100 px-1 rounded">__stripe_sid</code>) to process payments safely and prevent fraud.
+                </li>
+              </ul>
+
+              <h4 className="font-bold text-slate-900">3.2 Functional Interface Preferences</h4>
+              <p>
+                We store lightweight UI preferences in your browser&apos;s <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> so the portal remembers your workspace layout:
+              </p>
+              <ul className="list-disc pl-5 space-y-1.5">
+                <li>
+                  <strong>Quick-Start Guide Visibility:</strong> Keys such as <code className="text-xs bg-slate-100 px-1 rounded">sbs_client_quickstart_collapsed_v1</code> and <code className="text-xs bg-slate-100 px-1 rounded">sbs_office_admin_quickstart_collapsed_v1</code> remember whether you have collapsed or expanded your role&apos;s onboarding guide.
+                </li>
+              </ul>
+
+              <h4 className="font-bold text-slate-900">3.3 Embedded Media &amp; External Links</h4>
+              <p>
+                Training walkthrough videos hosted on external platforms (such as YouTube or Vimeo) may set standard player cookies when viewed. External reference links (such as NAICS code lookup directories) are governed by their respective websites&apos; privacy and cookie policies.
+              </p>
+
+              <h4 className="font-bold text-slate-900">3.4 Managing Browser Storage</h4>
+              <p>
+                You can clear or block cookies and <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> at any time through your browser settings. Please note that clearing site storage will sign you out of your account and reset collapsed guide preferences.
+              </p>
+            </>
+          )}
+
           {activeTab === 'disclaimer' && (
             <>
               <h3 className="text-xl font-extrabold text-slate-900">
-                3. Financial Accuracy &amp; Tax Compliance Disclaimer
+                4. Financial Accuracy &amp; Tax Compliance Disclaimer
               </h3>
 
-              <h4 className="font-bold text-slate-900">3.1 No CPA, Accounting, or Legal Relationship</h4>
+              <h4 className="font-bold text-slate-900">4.1 No CPA, Accounting, or Legal Relationship</h4>
               <p>
                 <strong>{brandName}</strong> is a bookkeeping software provider—not a Certified Public Accountant (CPA) firm, enrolled agent practice, law firm, or registered tax advisor. Your use of the Software does not create a CPA-client, accountant-client, or fiduciary relationship, and software outputs do not constitute formal tax, accounting, or legal advice.
               </p>
 
-              <h4 className="font-bold text-slate-900">3.2 Dependence on User-Supplied Data</h4>
+              <h4 className="font-bold text-slate-900">4.2 Dependence on User-Supplied Data</h4>
               <p>
                 Schedule C summaries, Net Profit calculations (Line 31), Home Office calculations (Line 30), Cost of Goods Sold totals (Part III), and IRS standard mileage previews depend entirely on the completeness and accuracy of the entries and CSV files you upload. Automated CSV category suggestions are provided solely as a convenience and must be reviewed by you prior to saving.
               </p>
 
-              <h4 className="font-bold text-slate-900">3.3 Deductibility &amp; IRS Substantiation</h4>
+              <h4 className="font-bold text-slate-900">4.3 Deductibility &amp; IRS Substantiation</h4>
               <p>
                 Assigning an expense to a Schedule C line inside the Software does not independently establish that the expense is ordinary, necessary, or legally deductible under the Internal Revenue Code. You are responsible for maintaining contemporaneous receipts, mileage logs, and written substantiation required by IRS rules (including IRC &sect; 274(d) for vehicle and travel deductions) and verifying all figures with a qualified tax professional before filing any tax return.
               </p>
@@ -197,20 +240,20 @@ export default function LegalModal({
           {activeTab === 'security' && (
             <>
               <h3 className="text-xl font-extrabold text-slate-900">
-                4. Data Security &amp; Breach Notification Policy
+                5. Data Security &amp; Breach Notification Policy
               </h3>
 
-              <h4 className="font-bold text-slate-900">4.1 Technical &amp; Administrative Safeguards</h4>
+              <h4 className="font-bold text-slate-900">5.1 Technical &amp; Administrative Safeguards</h4>
               <p>
                 We implement industry-standard safeguards to protect confidential bookkeeping records, including TLS/HTTPS encryption in transit, encryption at rest via our cloud database infrastructure, hashed password storage, strict Row-Level Security (RLS) policies isolating each user&apos;s financial records, and role-based access controls separating standard clients, office administrators, and platform administrators. While we maintain rigorous security practices, no internet-based system can guarantee absolute immunity from unauthorized access.
               </p>
 
-              <h4 className="font-bold text-slate-900">4.2 Shared Security Responsibilities</h4>
+              <h4 className="font-bold text-slate-900">5.2 Shared Security Responsibilities</h4>
               <p>
                 You are responsible for maintaining the confidentiality of your password, promptly replacing temporary passwords issued by a tax office, securing devices used to access your ledger, and ensuring that CSV files uploaded to the Platform are obtained from trusted financial institutions. White-label tax offices are responsible for managing staff permissions and promptly suspending access for departed personnel.
               </p>
 
-              <h4 className="font-bold text-slate-900">4.3 Incident Response &amp; Breach Notification</h4>
+              <h4 className="font-bold text-slate-900">5.3 Incident Response &amp; Breach Notification</h4>
               <p>
                 In the event of a confirmed security breach affecting unencrypted personal or financial information, we will immediately investigate, contain unauthorized access, preserve forensic logs, and notify affected users and white-label office administrators in accordance with applicable state and federal breach notification statutes, including affected data categories and recommended protective steps.
               </p>
@@ -220,22 +263,22 @@ export default function LegalModal({
           {activeTab === 'retention' && (
             <>
               <h3 className="text-xl font-extrabold text-slate-900">
-                5. Data Ownership, Retention &amp; Service Termination Policy
+                6. Data Ownership, Retention &amp; Service Termination Policy
               </h3>
 
-              <h4 className="font-bold text-slate-900">5.1 Customer Ownership of Bookkeeping Records</h4>
+              <h4 className="font-bold text-slate-900">6.1 Customer Ownership of Bookkeeping Records</h4>
               <p>
                 You retain 100% ownership of all business profiles, transaction entries, CSV uploads, vehicle mileage logs, and Schedule C worksheets you enter into <strong>{brandName}</strong>. You grant us a limited, non-exclusive license solely to host, process, back up, and display your records as required to provide the Service to you and your authorized tax preparer.
               </p>
 
-              <h4 className="font-bold text-slate-900">5.2 Data Export &amp; Account Closure</h4>
+              <h4 className="font-bold text-slate-900">6.2 Data Export &amp; Account Closure</h4>
               <p>
-                You may export your complete Schedule C summary in CSV format at any time at no additional charge using the <strong>Export Schedule C CSV</strong> button in your ledger. Upon subscription expiration or account cancellation, we recommend downloading all tax-year CSV reports prior to closure. Suspended accounts restrict login access until reactivated by your tax office or billing resolution, without immediately erasing underlying records.
+                You may export your complete Schedule C summary in CSV or PDF format at any time at no additional charge using the export buttons in your ledger. Upon subscription expiration or account cancellation, we recommend downloading all tax-year reports prior to closure. Suspended accounts restrict login access until reactivated by your tax office or billing resolution, without immediately erasing underlying records.
               </p>
 
-              <h4 className="font-bold text-slate-900">5.3 Backup Limitations &amp; Record Preservation</h4>
+              <h4 className="font-bold text-slate-900">6.3 Backup Limitations &amp; Record Preservation</h4>
               <p>
-                While our cloud database performs automated daily backups for disaster recovery, the Platform is not a substitute for your own statutory tax archive. Under IRS guidelines, taxpayers should retain supporting tax records for at least three (3) to seven (7) years; you are responsible for saving local copies of your exported CSV reports and receipts. Accounts terminated or inactive for more than twelve (12) months after subscription expiration may be permanently purged unless subject to a legal hold or active white-label agreement.
+                While our cloud database performs automated daily backups for disaster recovery, the Platform is not a substitute for your own statutory tax archive. Under IRS guidelines, taxpayers should retain supporting tax records for at least three (3) to seven (7) years; you are responsible for saving local copies of your exported Schedule C reports and receipts. Accounts terminated or inactive for more than twelve (12) months after subscription expiration may be permanently purged unless subject to a legal hold or active white-label agreement.
               </p>
             </>
           )}
