@@ -783,6 +783,11 @@ export default function App() {
       return <LandingPage tenant={currentOrg} onOpenAuth={handleOpenAuth} />;
     }
 
+    <ClientQuickStartCard
+  brandColor={activeBrandColor}
+  onNavigateTab={(tabName) => setActiveTab(tabName)}
+/>
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md mb-3">
