@@ -17,6 +17,13 @@ const PLAN_DETAILS = {
     envKey: 'VITE_STRIPE_LINK_B2C_ANNUAL',
     isWhiteLabelOffice: false,
   },
+  b2c_lifetime: {
+    name: 'Lifetime Solo Schedule C Access',
+    price: '$54.30 one-time fee',
+    summary: 'Multi-Year Schedule C Bookkeeping Web App — Zero Monthly Fees',
+    envKey: 'VITE_STRIPE_LINK_B2C_LIFETIME',
+    isWhiteLabelOffice: false,
+  },
   service_bureau: {
     name: 'Service Bureau White-Label',
     price: '$29/month',
@@ -39,6 +46,7 @@ export default function CheckoutModal({ planTier = 'b2b_onetime', onClose, fallb
   const stripeLinks = {
     b2c_monthly: import.meta.env.VITE_STRIPE_LINK_B2C_MONTHLY || '',
     b2c_annual: import.meta.env.VITE_STRIPE_LINK_B2C_ANNUAL || '',
+    b2c_lifetime: import.meta.env.VITE_STRIPE_LINK_B2C_LIFETIME || '',
     service_bureau: import.meta.env.VITE_STRIPE_LINK_SERVICE_BUREAU || '',
     b2b_onetime: import.meta.env.VITE_STRIPE_LINK_B2B_ONETIME || '',
   };
