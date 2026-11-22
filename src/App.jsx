@@ -914,9 +914,10 @@ export default function App() {
     };
   }, [session?.user?.id]);
 
-  const handleOpenAuth = (mode = 'login') => {
+ const handleOpenAuth = (mode = 'login') => {
     const signupMode = mode === 'signup';
     setIsSignUp(signupMode);
+    setActivationCodeInput('');
     setAuthError(null);
     setAuthMessage(null);
     setConfirmPassword('');
