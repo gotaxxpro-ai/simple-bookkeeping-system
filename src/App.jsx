@@ -1384,7 +1384,9 @@ export default function App() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. ETSY-SOLO-5430"
+                        autoComplete="off"
+                        name="welcome_pass_code"
+                        placeholder="XXXX-XXXX-XXXX"
                         value={activationCodeInput}
                         onChange={(e) => setActivationCodeInput(e.target.value.toUpperCase())}
                         className="w-full pl-9 pr-3.5 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-mono uppercase tracking-wider"
@@ -1395,7 +1397,6 @@ export default function App() {
                     </p>
                   </div>
                 )}
-
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
                   <div className="relative">
