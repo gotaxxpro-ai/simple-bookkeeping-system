@@ -17,6 +17,7 @@ import {
   Hash,
   CheckCircle2,
   Wrench,
+  Ticket,
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import BookkeepingLedger from './components/BookkeepingLedger';
@@ -29,6 +30,18 @@ const DEMO_PASSWORD = 'Demo1234!';
 // Set VITE_STANDALONE_MODE=true in .env when deploying to your B2C / Etsy solo subdomain
 const IS_STANDALONE_MODE =
   String(import.meta.env.VITE_STANDALONE_MODE || '').toLowerCase() === 'true';
+
+// Private Etsy / Welcome Pass activation code required on #signup in standalone mode
+const SOLO_ACTIVATION_CODE = (
+  import.meta.env.VITE_SOLO_ACTIVATION_CODE || 'ETSY-SOLO-5430'
+).trim();
+
+function normalizeCode(val) {
+  return String(val || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
 
 const DEFAULT_ORG = {
   id: 'default',
@@ -61,6 +74,7 @@ function MissingSupabaseConfigScreen() {
           <div>VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co</div>
           <div>VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY</div>
           <div>VITE_STANDALONE_MODE={IS_STANDALONE_MODE ? 'true' : 'false'}</div>
+          <div>VITE_SOLO_ACTIVATION_CODE={SOLO_ACTIVATION_CODE}</div>
         </div>
         <p className="text-xs text-slate-500">
           Add these variables to your root <code className="bg-slate-100 px-1 rounded">.env</code> file (or Hostinger Environment Variables), run <code className="bg-slate-100 px-1 rounded">npm run build</code> again, and upload the updated <code className="bg-slate-100 px-1 rounded">dist/</code> contents.
@@ -200,7 +214,7 @@ function HiddenFunnelOfferPage({
                     Flexible month-to-month access for freelancers and 1099 contractors.
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
-                    <span className="text-3xl font-extrabold text-white">$19</span>
+                    <span className="text-3xl font-extrabold text-white">$15</span>
                     <span className="text-xs text-slate-400">/ month</span>
                   </div>
                   <ul className="mt-4 space-y-2 text-xs text-slate-300">
@@ -237,7 +251,7 @@ function HiddenFunnelOfferPage({
                     Pay once, own your multi-year Schedule C bookkeeping workspace forever.
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
-                    <span className="text-3xl font-extrabold text-white">$39</span>
+                    <span className="text-3xl font-extrabold text-white">$54.30</span>
                     <span className="text-xs text-slate-400">one-time payment</span>
                   </div>
                   <ul className="mt-4 space-y-2 text-xs text-slate-300">
@@ -253,7 +267,7 @@ function HiddenFunnelOfferPage({
                   className="mt-6 block w-full rounded-xl py-3 text-center text-xs font-bold text-white shadow-lg hover:opacity-95 transition"
                   style={{ backgroundColor: brandColor }}
                 >
-                  Unlock Lifetime Access →
+                  Unlock Lifetime Access ($54.30) →
                 </a>
               </div>
             </div>
@@ -269,7 +283,7 @@ function HiddenFunnelOfferPage({
                     For self-employed filers, freelancers, and single-member LLCs.
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
-                    <span className="text-3xl font-extrabold text-white">$19</span>
+                    <span className="text-3xl font-extrabold text-white">$15</span>
                     <span className="text-xs text-slate-400">/ month</span>
                   </div>
                   <ul className="mt-4 space-y-2 text-xs text-slate-300">
@@ -679,6 +693,7 @@ export default function App() {
   const [isSignUp, setIsSignUp] = useState(() => {
     return window.location.hash.replace('#', '').toLowerCase() === 'signup';
   });
+  const [activationCodeInput, setActivationCodeInput] = useState('');
   const [fullName, setFullName] = useState('');
   const [officeSlugInput, setOfficeSlugInput] = useState(
     !IS_STANDALONE_MODE && initialUrlSlug && initialUrlSlug !== 'default' ? initialUrlSlug : ''
@@ -818,7 +833,7 @@ export default function App() {
           } else {
             setAuthError(
               demoErr?.message ||
-                'Demo workspace is temporarily unavailable. Please sign in or create a free trial account.'
+                'Demo workspace is temporarily unavailable. Please sign in or create an account.'
             );
             setShowAuth(true);
           }
@@ -1002,6 +1017,16 @@ export default function App() {
       }
 
       if (isSignUp) {
+        if (IS_STANDALONE_MODE) {
+          const enteredCode = normalizeCode(activationCodeInput);
+          const expectedCode = normalizeCode(SOLO_ACTIVATION_CODE);
+          if (!enteredCode || enteredCode !== expectedCode) {
+            throw new Error(
+              'Invalid or missing Activation Code. Please enter the code printed inside your Etsy Welcome Pass PDF, or purchase lifetime access ($54.30) on the home page.'
+            );
+          }
+        }
+
         if (!acceptedTerms) {
           throw new Error(
             'Please agree to the Terms of Service, Privacy Policy, and Tax Disclaimer to create your account.'
@@ -1038,6 +1063,7 @@ export default function App() {
             data: {
               full_name: fullName.trim(),
               office_slug: matchedOrg ? matchedOrg.slug : undefined,
+              activation_source: IS_STANDALONE_MODE ? 'etsy_pass' : 'direct_signup',
               terms_accepted_at: new Date().toISOString(),
               terms_version: '1.0',
             },
@@ -1289,7 +1315,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-md mb-3">
+        <div className="w-full max-w-md mb-3 flex items-center justify-between">
           <Tooltip text="Return to the home page and pricing plans" position="bottom">
             <button
               type="button"
@@ -1299,6 +1325,21 @@ export default function App() {
               &larr; Back to Home
             </button>
           </Tooltip>
+
+          {IS_STANDALONE_MODE && isSignUp && (
+            <button
+              type="button"
+              onClick={() => {
+                handleBackToHome();
+                setTimeout(() => {
+                  window.location.hash = 'pricing';
+                }, 50);
+              }}
+              className="text-xs font-semibold text-emerald-700 hover:underline"
+            >
+              Need a license? ($54.30) →
+            </button>
+          )}
         </div>
 
         <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1321,7 +1362,7 @@ export default function App() {
 
           <form onSubmit={handleAuthSubmit} className="p-6 space-y-4">
             {authError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium">
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium leading-relaxed">
                 {authError}
               </div>
             )}
@@ -1333,6 +1374,28 @@ export default function App() {
 
             {isSignUp && (
               <>
+                {IS_STANDALONE_MODE && (
+                  <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
+                    <label className="block text-xs font-bold text-emerald-950">
+                      Etsy / Welcome Pass Activation Code *
+                    </label>
+                    <div className="relative">
+                      <Ticket className="w-4 h-4 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. ETSY-SOLO-5430"
+                        value={activationCodeInput}
+                        onChange={(e) => setActivationCodeInput(e.target.value.toUpperCase())}
+                        className="w-full pl-9 pr-3.5 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-mono uppercase tracking-wider"
+                      />
+                    </div>
+                    <p className="text-[11px] text-emerald-800">
+                      Enter the activation code printed on page 1 of your downloadable Etsy Welcome Pass PDF.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
                   <div className="relative">
@@ -1500,14 +1563,28 @@ export default function App() {
               </>
             )}
 
-            <Tooltip text={isSignUp ? 'Register your new bookkeeping account' : 'Sign in to your dashboard'}>
+            <Tooltip
+              text={
+                isSignUp
+                  ? IS_STANDALONE_MODE
+                    ? 'Activate your Etsy Welcome Pass and open your ledger'
+                    : 'Register your new bookkeeping account'
+                  : 'Sign in to your dashboard'
+              }
+            >
               <button
                 type="submit"
                 disabled={submittingAuth}
                 className="w-full py-2.5 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: primaryColor }}
               >
-                {submittingAuth ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+                {submittingAuth
+                  ? 'Please wait...'
+                  : isSignUp
+                  ? IS_STANDALONE_MODE
+                    ? 'Activate Welcome Pass & Create Account'
+                    : 'Create Account'
+                  : 'Sign In'}
               </button>
             </Tooltip>
 
@@ -1528,7 +1605,11 @@ export default function App() {
                 }}
                 className="text-xs font-medium text-slate-600 hover:text-slate-900 underline"
               >
-                {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Create One'}
+                {isSignUp
+                  ? 'Already have an account? Sign In'
+                  : IS_STANDALONE_MODE
+                  ? 'Have an Etsy Welcome Pass? Activate Account'
+                  : 'Need an account? Create One'}
               </button>
             </div>
           </form>
@@ -1602,7 +1683,7 @@ export default function App() {
             }}
             className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
           >
-            {IS_STANDALONE_MODE ? 'Get Your Own Ledger →' : 'Start Your 7-Day Free Trial →'}
+            {IS_STANDALONE_MODE ? 'Get Lifetime Access ($54.30) →' : 'Start Your 7-Day Free Trial →'}
           </button>
         </div>
       )}
